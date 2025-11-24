@@ -23,3 +23,8 @@ export async function updateUserTitle(id: string, payload: Partial<Omit<UserTitl
   const { data } = await api.patch<UserTitleStateResponse>(`/user-titles/${id}`, payload);
   return data;
 }
+
+export async function getUserTitleByTitleId(titleId: string) {
+  const { data } = await api.get<UserTitleStateResponse | null>(`/user-titles/title/${titleId}`);
+  return data;
+}
