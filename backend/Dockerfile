@@ -1,7 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# package-lock находится в корне монорепо, поэтому используем install с ослабленными peer deps
+RUN npm install --legacy-peer-deps
 COPY tsconfig*.json ./
 COPY prisma ./prisma
 COPY src ./src

@@ -3,6 +3,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { MediaType, Title } from '@prisma/client';
 import { TitlesService } from '../titles/titles.service';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { weightVariants, WeightVariant } from './recommendation.config';
 
 export interface RecommendationContext {
   mood?: string;
@@ -30,11 +31,13 @@ interface UserTasteProfile {
   likedTitleIds: Set<string>;
   dislikedTitleIds: Set<string>;
   preferredTypes: Set<MediaType>;
+  preferredLanguages: Set<string>;
 }
 
 @Injectable()
 export class RecommendationEngine {
   private readonly logger = new Logger(RecommendationEngine.name);
+  private readonly candidateCache = new Map<string, { expires: number; titles: Candidate[] }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -43,12 +46,14 @@ export class RecommendationEngine {
   ) {}
 
   async recommend(userId: string, limit: number, context: RecommendationContext): Promise<RecommendationResultItem[]> {
+    const variant = this.pickVariant(userId);
+    const weights = weightVariants[variant];
     const profile = await this.buildUserProfile(userId);
-    const candidates = await this.buildCandidatePool(userId, profile, limit * 6);
+    const candidates = await this.buildCandidatePool(userId, profile, limit * 8, context);
 
     const scored = candidates
       .filter((c) => !profile.dislikedTitleIds.has(c.id))
-      .map((title) => this.scoreCandidate(title, profile, context))
+      .map((title) => this.scoreCandidate(title, profile, context, weights))
       .sort((a, b) => b.score - a.score);
 
     const diversified = this.diversify(scored, limit);
@@ -122,10 +127,27 @@ export class RecommendationEngine {
       dislikedTitleIds,
       seenTitleIds,
       preferredTypes,
+      preferredLanguages: new Set<string>(states.map((s) => s.title.originalLanguage).filter(Boolean) as string[]),
     };
   }
 
-  private async buildCandidatePool(userId: string, profile: UserTasteProfile, targetSize: number): Promise<Candidate[]> {
+  private cacheKey(userId: string, context: RecommendationContext) {
+    return `${userId}:${context.mood ?? 'm'}:${context.mindset ?? 'ms'}:${context.company ?? 'c'}:${context.timeAvailable ?? 't'}`;
+  }
+
+  private async buildCandidatePool(
+    userId: string,
+    profile: UserTasteProfile,
+    targetSize: number,
+    context: RecommendationContext,
+  ): Promise<Candidate[]> {
+    const key = this.cacheKey(userId, context);
+    const cached = this.candidateCache.get(key);
+    const now = Date.now();
+    if (cached && cached.expires > now) {
+      return cached.titles.slice(0, targetSize);
+    }
+
     const candidates: Candidate[] = [];
     const seenTmdbIds = new Set<number>();
 
@@ -176,10 +198,12 @@ export class RecommendationEngine {
       }
     });
 
-    return candidates.slice(0, targetSize);
+    const result = candidates.slice(0, targetSize);
+    this.candidateCache.set(key, { titles: result, expires: now + 5 * 60 * 1000 });
+    return result;
   }
 
-  private scoreCandidate(title: Title, profile: UserTasteProfile, context: RecommendationContext) {
+  private scoreCandidate(title: Title, profile: UserTasteProfile, context: RecommendationContext, weights: typeof weightVariants['A']) {
     const signals: Record<string, number> = {};
     let score = 0;
 
@@ -188,7 +212,7 @@ export class RecommendationEngine {
     const popularity = (title.rawTmdbJson as any)?.popularity ?? tmdbRating * 10;
     const popularityScore = Math.min(1, popularity / 500);
     signals.popularity = popularityScore;
-    score += popularityScore * 0.25;
+    score += popularityScore * weights.popularity;
 
     // Жанры
     let genreScore = 0;
@@ -197,7 +221,7 @@ export class RecommendationEngine {
       signals[`genre:${g}`] = weight;
       genreScore += weight;
     });
-    score += genreScore * 0.15;
+    score += genreScore * weights.genre;
 
     // Страны
     let countryScore = 0;
@@ -206,7 +230,7 @@ export class RecommendationEngine {
       signals[`country:${c}`] = w;
       countryScore += w;
     });
-    score += countryScore * 0.08;
+    score += countryScore * weights.country;
 
     // Годы/десятилетия
     const year = title.releaseDate?.getFullYear();
@@ -214,8 +238,15 @@ export class RecommendationEngine {
       const decade = Math.floor(year / 10) * 10;
       const decadeWeight = profile.decadeWeights[String(decade)] ?? 0;
       signals[`decade:${decade}`] = decadeWeight;
-      score += decadeWeight * 0.08;
+      score += decadeWeight * weights.decade;
       signals.yearFreshness = Math.max(0, (2025 - year) / 40);
+    }
+
+    // Язык оригинала
+    if (title.originalLanguage) {
+      const langBoost = profile.preferredLanguages.has(title.originalLanguage) ? 1 : 0.2;
+      signals.language = langBoost;
+      score += langBoost * weights.language;
     }
 
     // Люди (режиссёры/актеры)
@@ -226,7 +257,7 @@ export class RecommendationEngine {
       signals[`person:${p}`] = w;
       peopleScore += w;
     });
-    score += peopleScore * 0.12;
+    score += peopleScore * weights.people;
 
     // Runtime + контекст «время есть»
     if (title.runtime && context.timeAvailable) {
@@ -234,34 +265,46 @@ export class RecommendationEngine {
       const diff = Math.abs(title.runtime - target);
       const runtimeScore = Math.max(0, 1 - diff / Math.max(target, 120));
       signals.runtimeFit = runtimeScore;
-      score += runtimeScore * 0.12;
+      score += runtimeScore * weights.runtime;
     } else if (title.runtime && profile.preferredRuntime) {
       const diff = Math.abs(title.runtime - profile.preferredRuntime);
       const runtimeScore = Math.max(0, 1 - diff / profile.preferredRuntime);
       signals.runtimeFit = runtimeScore;
-      score += runtimeScore * 0.1;
+      score += runtimeScore * (weights.runtime - 0.02);
     }
 
     // Настроение и образ мыслей
     const moodBoost = this.mapMoodBoost(context.mood, title.genres ?? []);
     if (moodBoost) {
       signals.mood = moodBoost;
-      score += moodBoost * 0.1;
+      score += moodBoost * weights.mood;
     }
 
     const mindsetBoost = this.mapMindsetBoost(context.mindset, tmdbRating);
     signals.mindset = mindsetBoost;
-    score += mindsetBoost * 0.05;
+    score += mindsetBoost * weights.mindset;
 
     // Компания (семья/друзья)
     const companyPenalty = this.companyPenalty(context.company, title.rawTmdbJson as any);
     signals.companyPenalty = companyPenalty;
-    score += companyPenalty * 0.05;
+    score += companyPenalty * weights.company;
+
+    // Тип контента
+    const typePref = profile.preferredTypes.has(title.mediaType) ? 1 : 0.6;
+    signals.typePreference = typePref;
+    score += typePref * weights.typePreference;
 
     // Новизна
     const novelty = profile.seenTitleIds.has(title.id) ? -0.6 : 0.2;
     signals.novelty = novelty;
-    score += novelty * 0.08;
+    score += novelty * weights.novelty;
+
+    // Свежесть (год выпуска)
+    if (year) {
+      const freshness = Math.max(0, 1 - (2025 - year) / 40);
+      signals.freshness = freshness;
+      score += freshness * weights.freshness;
+    }
 
     // Диверсификация внутри выдачи добавляется в diversify()
 
@@ -374,5 +417,10 @@ export class RecommendationEngine {
       this.logger.warn(`Skip candidate ${tmdbId}: ${String((e as Error).message)}`);
       return null;
     }
+  }
+
+  private pickVariant(userId: string): WeightVariant {
+    const hash = Array.from(userId).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    return hash % 2 === 0 ? 'A' : 'B';
   }
 }
