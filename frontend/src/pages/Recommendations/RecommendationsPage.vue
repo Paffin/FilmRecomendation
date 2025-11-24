@@ -106,11 +106,13 @@
             :status-label="currentFocus.statusLabel"
             :can-add-to-watchlist="currentFocus.canAddToWatchlist"
             :busy="actionLoading === currentFocus.id"
+            :show-what-if="true"
             @like="like(currentFocus)"
             @watched="watched(currentFocus)"
             @dislike="dislike(currentFocus)"
             @details="openDetails(currentFocus)"
             @add-to-watchlist="addToWatchlist(currentFocus)"
+            @tweak="tweak(currentFocus, $event)"
           />
           <div class="focus-actions">
             <Button
@@ -140,11 +142,13 @@
           :status-label="item.statusLabel"
           :can-add-to-watchlist="item.canAddToWatchlist"
           :busy="actionLoading === item.id"
+          :show-what-if="true"
           @like="like(item)"
           @watched="watched(item)"
           @dislike="dislike(item)"
           @details="openDetails(item)"
           @add-to-watchlist="addToWatchlist(item)"
+          @tweak="tweak(item, $event)"
         />
       </TransitionGroup>
     </div>
@@ -200,7 +204,12 @@ import Tag from 'primevue/tag';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
-import { fetchRecommendations, fetchEveningProgram, sendRecommendationFeedback } from '../../api/recommendations';
+import {
+  fetchRecommendations,
+  fetchEveningProgram,
+  sendRecommendationFeedback,
+  sendRecommendationTweak,
+} from '../../api/recommendations';
 import type {
   ApiTitle,
   MediaType,
@@ -231,6 +240,11 @@ interface RecCard {
 
 interface EveningRecCard extends RecCard {
   role: 'warmup' | 'main' | 'dessert';
+}
+
+interface TweakPayload {
+  runtime: 'shorter' | 'longer' | null;
+  tone: 'lighter' | 'heavier' | null;
 }
 
 const recommendations = ref<RecCard[]>([]);
@@ -508,6 +522,42 @@ const dislike = async (item: RecCard) => {
     if (recommendations.value.length === 0) await load();
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Не удалось обновить', detail: 'Попробуйте ещё раз', life: 4000 });
+  } finally {
+    actionLoading.value = null;
+  }
+};
+
+const tweak = async (item: RecCard, payload: TweakPayload) => {
+  if (!sessionId.value) return;
+  if (!payload.runtime && !payload.tone) return;
+  actionLoading.value = item.id;
+  try {
+    const res = await sendRecommendationTweak({
+      sessionId: sessionId.value,
+      titleId: item.id,
+      runtime: payload.runtime ?? undefined,
+      tone: payload.tone ?? undefined,
+    });
+    const replacement = res?.replacement ? mapToCard(res.replacement) : null;
+    const index = recommendations.value.findIndex((r) => r.id === item.id);
+    if (index >= 0 && replacement) {
+      recommendations.value.splice(index, 1, replacement);
+    }
+    if (replacement) {
+      toast.add({
+        severity: 'info',
+        summary: 'Подборка обновлена',
+        detail: 'Мы предложили вариант под скорректированный запрос.',
+        life: 2500,
+      });
+    }
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось обновить рекомендацию',
+      detail: 'Попробуйте ещё раз',
+      life: 3500,
+    });
   } finally {
     actionLoading.value = null;
   }

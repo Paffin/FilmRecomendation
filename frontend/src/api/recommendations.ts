@@ -10,7 +10,7 @@ export interface RecommendationQuery {
   noveltyBias?: 'safe' | 'mix' | 'surprise';
   pace?: 'calm' | 'balanced' | 'dynamic';
   freshness?: 'trending' | 'classic' | 'any';
-   diversityLevel?: 'soft' | 'balanced' | 'bold';
+  diversityLevel?: 'soft' | 'balanced' | 'bold';
   overrideGenre?: number;
   overrideMood?: number;
   overrideNovelty?: number;
@@ -37,5 +37,15 @@ export async function sendRecommendationFeedback(payload: {
   feedback: 'like' | 'dislike' | 'watched';
 }) {
   const { data } = await api.post('/recommendations/feedback', payload);
+  return data;
+}
+
+export async function sendRecommendationTweak(payload: {
+  sessionId: string;
+  titleId: string;
+  runtime?: 'shorter' | 'longer';
+  tone?: 'lighter' | 'heavier';
+}) {
+  const { data } = await api.post('/recommendations/tweak', payload);
   return data;
 }

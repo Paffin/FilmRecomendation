@@ -269,21 +269,12 @@ export class RecommendationEngine {
     return merged;
   }
 
-  private async loadUserProfile(userId: string): Promise<UserTasteProfile> {
+  async rebuildUserTasteProfile(userId: string): Promise<void> {
     const states = await this.prisma.userTitleState.findMany({
       where: { userId },
       include: { title: true },
       orderBy: { lastInteractionAt: 'desc' },
     });
-
-    const latestInteraction = states[0]?.lastInteractionAt ?? new Date(0);
-    const cached = await this.prisma.userTasteProfile.findUnique({ where: { userId } });
-    if (cached && cached.updatedAt >= latestInteraction) {
-      const cachedData = cached.data as unknown as Partial<TasteProfileData>;
-      if (cachedData.schemaVersion === 3) {
-        return this.deserializeProfile(cachedData as TasteProfileData);
-      }
-    }
 
     const computed = this.computeProfile(states);
     await this.prisma.userTasteProfile.upsert({
@@ -291,8 +282,49 @@ export class RecommendationEngine {
       update: { data: computed as unknown as Prisma.InputJsonValue },
       create: { userId, data: computed as unknown as Prisma.InputJsonValue },
     });
+  }
 
-    return this.deserializeProfile(computed);
+  private async loadUserProfile(userId: string): Promise<UserTasteProfile> {
+    const cached = await this.prisma.userTasteProfile.findUnique({ where: { userId } });
+    if (cached) {
+      const cachedData = cached.data as unknown as Partial<TasteProfileData>;
+      if (cachedData.schemaVersion === 3) {
+        return this.deserializeProfile(cachedData as TasteProfileData);
+      }
+    }
+
+    // Профиль ещё не построен или устарел по схеме — пересчитываем целиком.
+    await this.rebuildUserTasteProfile(userId);
+    const fresh = await this.prisma.userTasteProfile.findUnique({ where: { userId } });
+    if (!fresh) {
+      // Пользователь без взаимодействий — возвращаем пустой профиль.
+      return this.deserializeProfile({
+        schemaVersion: 3,
+        genrePositive: {},
+        genreNegative: {},
+        countryWeights: {},
+        decadeWeights: {},
+        languageWeights: {},
+        peopleWeights: {},
+        keywordWeights: {},
+        collectionWeights: {},
+        ageRatingWeights: {},
+        runtimeAvg: null,
+        runtimeMedian: null,
+        preferredTypes: [],
+        likedTitleIds: [],
+        dislikedTitleIds: [],
+        seenTitleIds: [],
+        anchorTitles: [],
+        moodVector: { light: 0, neutral: 0, heavy: 0 },
+        freshnessTilt: 0,
+        languageDiversity: 0,
+        updatedAt: new Date(0).toISOString(),
+      });
+    }
+
+    const freshData = fresh.data as unknown as TasteProfileData;
+    return this.deserializeProfile(freshData);
   }
 
   private computeProfile(states: (UserTitleState & { title: Title })[]): TasteProfileData {

@@ -42,6 +42,24 @@
 - `RecommendationSignals` — структурированный набор сигналов, сохраняемый в `RecommendationItem.signals` и используемый для объяснений.
 - Алгоритм расширяемый: добавить group profiles (позже), платформенные фильтры.
 
+## Эксперименты и граф вкусов
+
+- **Слой экспериментов**:
+  - Таблицы `RecommendationExperiment` и `UserExperimentAssignment` описывают активные A/B‑эксперименты и закрепление варианта за пользователем.
+  - `RecommendationExperimentService`:
+    - читает `config.variants` (набор вариантов, напр. `high_diversity`, `safe_mix`);
+    - по `userId` детерминированно назначает вариант и сохраняет его в `UserExperimentAssignment`;
+    - подмешивает дефолты `diversityLevel`/`noveltyBias` в `RecommendationContext` и записывает `experimentKey`/`experimentVariant` в `RecommendationSession.context`.
+- **Инкрементальное обновление профиля**:
+  - `UserTasteProfile` пересчитывается при каждом изменении `UserTitleState` (`UserTitlesService`) и фидбэке по рекомендациям (`RecommendationsService.handleFeedback`) через `RecommendationEngine.rebuildUserTasteProfile(userId)`.
+  - `loadUserProfile` больше не сканирует всю историю на каждый запрос рекомендаций, а переиспользует сохранённый профиль (с пересчётом только при смене версии схемы).
+- **Логический граф вкусов**:
+  - В `AnalyticsService.tasteGalaxy` строится граф: вершины — пользователь, топ‑жанры и связанные с ними тайтлы; рёбра — «предпочитает жанр», «тайтл относится к жанру», «похожие тайтлы» (по пересечению жанров).
+  - Результат (`nodes` + `edges`) используется фронтендом для интерактивной «карты‑галактики» вкуса.
+- **Что‑если‑режим**:
+  - `POST /recommendations/tweak` принимает `{sessionId, titleId, runtime?, tone?}` и на основе исходного `RecommendationSession.context` строит модифицированный контекст (короче/длиннее, легче/тяжелее).
+  - Engine подбирает замену только для этой карточки без изменения статуса тайтла, что позволяет пользователю экспериментировать с подборкой как с отдельным видом feedback (`tweak`), не влияя напрямую на историю просмотров.
+
 ## Производительность
 
 - Предвыборки: список популярных по медиатипу обновлять периодически (cron/при первом запросе, хранить в БД с TTL).

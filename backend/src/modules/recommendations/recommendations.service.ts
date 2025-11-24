@@ -7,22 +7,32 @@ import {
 } from './recommendation.engine';
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
+import { RecommendationTweakDto } from './dto/tweak.dto';
 import { FeedbackContext, TitleStatus, Prisma, Title, RecommendationSession } from '@prisma/client';
 import { pickVariantForUser } from './recommendation.config';
 import { inferSignalGroup } from './signals';
 import { mapTitleToApi } from '../titles/title.mapper';
+import { RecommendationExperimentService } from './experiment.service';
 
 @Injectable()
 export class RecommendationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly engine: RecommendationEngine,
+    private readonly experiments: RecommendationExperimentService,
   ) {}
 
-  private buildContext(userId: string, query: RecommendationQueryDto): {
+  private async buildContext(
+    userId: string,
+    query: RecommendationQueryDto,
+  ): Promise<{
     context: RecommendationContext;
     variant: string;
-  } {
+    experimentMeta?: {
+      experimentKey: string;
+      variantKey: string;
+    };
+  }> {
     const limit = query.limit ?? 5;
     void limit; // not used directly here, но limit важен для вызывающих
     const now = new Date();
@@ -54,17 +64,44 @@ export class RecommendationsService {
       },
     };
     const variant = pickVariantForUser(userId);
-    return { context, variant };
+
+    // Экспериментальный слой поверх базовых настроек:
+    // если активен эксперимент, подмешиваем дефолты по диверсификации/новизне
+    // и сохраняем метаданные в сессии.
+    const assignment = await this.experiments.getAssignment(userId).catch(() => null);
+
+    if (assignment?.config) {
+      if (!context.diversityLevel && assignment.config.diversityLevel) {
+        context.diversityLevel = assignment.config.diversityLevel;
+      }
+      if (!context.noveltyBias && assignment.config.noveltyBias) {
+        context.noveltyBias = assignment.config.noveltyBias;
+      }
+    }
+
+    const experimentMeta = assignment
+      ? {
+          experimentKey: assignment.experimentKey,
+          variantKey: assignment.variantKey,
+        }
+      : undefined;
+
+    return { context, variant, experimentMeta };
   }
 
   async getRecommendations(userId: string, query: RecommendationQueryDto) {
     const limit = query.limit ?? 5;
-    const { context, variant } = this.buildContext(userId, query);
+    const { context, variant, experimentMeta } = await this.buildContext(userId, query);
 
     const session = await this.prisma.recommendationSession.create({
       data: {
         userId,
-        context: { ...(context as unknown as Prisma.InputJsonObject), variant },
+        context: {
+          ...(context as unknown as Prisma.InputJsonObject),
+          variant,
+          experimentKey: experimentMeta?.experimentKey ?? null,
+          experimentVariant: experimentMeta?.variantKey ?? null,
+        },
       },
     });
 
@@ -159,6 +196,9 @@ export class RecommendationsService {
       },
     });
 
+    // Инкрементально переобучаем профиль вкуса пользователя после нового фидбэка.
+    await this.engine.rebuildUserTasteProfile(userId);
+
     // Помечаем текущий элемент как заменённый/отработанный, чтобы не рекомендовать его повторно в рамках сессии
     await this.prisma.recommendationItem.updateMany({
       where: { sessionId: dto.sessionId, titleId: title.id },
@@ -199,6 +239,71 @@ export class RecommendationsService {
     }
 
     return { ok: true };
+  }
+
+  async applyTweak(userId: string, dto: RecommendationTweakDto) {
+    const title = await this.prisma.title.findUnique({ where: { id: dto.titleId } });
+    const session = await this.prisma.recommendationSession.findUnique({
+      where: { id: dto.sessionId },
+    });
+    if (!session || !title) throw new NotFoundException('Session or title not found');
+
+    const baseContext = (session.context ?? {}) as RecommendationContext;
+    const context: RecommendationContext = { ...baseContext };
+
+    if (dto.runtime) {
+      const baseTime = Number(context.timeAvailable ?? '100') || 100;
+      const delta = baseTime <= 60 ? 20 : 30;
+      const adjusted =
+        dto.runtime === 'shorter'
+          ? Math.max(40, baseTime - delta)
+          : baseTime + delta;
+      context.timeAvailable = String(adjusted);
+    }
+
+    if (dto.tone === 'lighter') {
+      context.mood = 'light';
+    } else if (dto.tone === 'heavier') {
+      context.mood = 'heavy';
+    }
+
+    if (dto.runtime || dto.tone) {
+      context.overrides = {
+        ...(context.overrides ?? {}),
+        mood: dto.tone ? 1.25 : context.overrides?.mood ?? 1,
+      };
+    }
+
+    const replacement = (await this.engine.recommend(userId, 1, context))[0];
+    if (!replacement) {
+      return { ok: true };
+    }
+
+    const existingItem = await this.prisma.recommendationItem.findFirst({
+      where: { sessionId: session.id, titleId: replacement.title.id },
+    });
+
+    const itemId =
+      existingItem?.id ??
+      (
+        await this.prisma.recommendationItem.create({
+          data: {
+            sessionId: session.id,
+            titleId: replacement.title.id,
+            rank: 98,
+            score: replacement.score,
+            signals: this.buildSignalsPayload(replacement.signals),
+          },
+        })
+      ).id;
+
+    return {
+      replacement: {
+        title: mapTitleToApi(replacement.title),
+        explanation: replacement.explanation,
+        itemId,
+      },
+    };
   }
 
   private buildSignalsPayload(signals: RecommendationSignals) {
@@ -327,7 +432,7 @@ export class RecommendationsService {
 
   async getEveningProgram(userId: string, query: RecommendationQueryDto) {
     const programLimit = 12;
-    const { context, variant } = this.buildContext(userId, query);
+    const { context, variant, experimentMeta } = await this.buildContext(userId, query);
 
     const session = await this.prisma.recommendationSession.create({
       data: {
@@ -335,6 +440,8 @@ export class RecommendationsService {
         context: {
           ...(context as unknown as Prisma.InputJsonObject),
           variant,
+          experimentKey: experimentMeta?.experimentKey ?? null,
+          experimentVariant: experimentMeta?.variantKey ?? null,
           mode: 'evening_program',
         },
       },

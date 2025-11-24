@@ -72,6 +72,8 @@
       <div v-else class="empty">Недостаточно данных</div>
     </div>
 
+    <TasteGalaxy :data="galaxy" :loading="loadingGalaxy" @open-title="openGalaxyTitle" />
+
     <div class="surface-card">
       <h3 class="section-title">{{ t('profile.antiList') }}</h3>
       <div v-if="loading" class="chart-skeleton"><Skeleton height="120px" border-radius="12px" /></div>
@@ -174,14 +176,15 @@ import {
   ArcElement,
 } from 'chart.js';
 import type { ChartOptions } from 'chart.js';
-import { getOverview, getTasteMap } from '../../api/analytics';
-import type { OverviewResponse, TasteMapResponse } from '../../api/analytics';
+import { getOverview, getTasteMap, getTasteGalaxy } from '../../api/analytics';
+import type { OverviewResponse, TasteMapResponse, TasteGalaxyResponse } from '../../api/analytics';
 import { useI18n } from 'vue-i18n';
 import { updateUserTitle, getUserTitleByTitleId, createUserTitle } from '../../api/userTitles';
 import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
 import { fetchRecommendations } from '../../api/recommendations';
 import type { MediaType, RecommendationItemResponse, TitleStatus } from '../../api/types';
+import TasteGalaxy from '../../components/profile/TasteGalaxy.vue';
 
 ChartJS.register(
   RadialLinearScale,
@@ -199,6 +202,8 @@ ChartJS.register(
 const overview = ref<OverviewResponse | null>(null);
 const taste = ref<TasteMapResponse | null>(null);
 const loading = ref(true);
+const loadingGalaxy = ref(true);
+const galaxy = ref<TasteGalaxyResponse | null>(null);
 const { t } = useI18n();
 const toast = useToast();
 const router = useRouter();
@@ -229,11 +234,13 @@ const editorRecs = ref<EditorRecCard[]>([]);
 
 onMounted(async () => {
   try {
-    const [o, t] = await Promise.all([getOverview(), getTasteMap()]);
+    const [o, t, g] = await Promise.all([getOverview(), getTasteMap(), getTasteGalaxy()]);
     overview.value = o;
     taste.value = t;
+    galaxy.value = g;
   } finally {
     loading.value = false;
+    loadingGalaxy.value = false;
   }
 });
 
@@ -499,6 +506,10 @@ const handleEditorDislike = (_item: EditorRecCard) => {
     detail: 'Используйте дизлайк на карточке рекомендаций для обучения антисписка.',
     life: 2500,
   });
+};
+
+const openGalaxyTitle = (id: string) => {
+  router.push({ path: `/title/${id}` });
 };
 
 </script>

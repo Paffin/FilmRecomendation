@@ -1,6 +1,7 @@
 # Доменная модель (черновой дизайн под Prisma/PostgreSQL)
 
 ## User
+
 - `id` UUID PK
 - `email` (unique)
 - `passwordHash`
@@ -9,6 +10,7 @@
 - `createdAt`, `updatedAt`
 
 ## Title
+
 - `id` UUID PK
 - `tmdbId` int (unique)
 - `imdbId` string nullable
@@ -27,6 +29,7 @@
 - `createdAt`, `updatedAt`
 
 ## UserTitleState
+
 - `id` UUID PK
 - `userId` FK → User
 - `titleId` FK → Title
@@ -39,6 +42,7 @@
 - unique(userId, titleId)
 
 ## FeedbackEvent
+
 - `id` UUID
 - `userId` FK → User
 - `titleId` FK → Title
@@ -48,12 +52,14 @@
 - `createdAt`
 
 ## RecommendationSession
+
 - `id` UUID
 - `userId` FK → User
 - `context` jsonb (mood, mindset, company, timeAvailable, device, timeOfDay)
 - `createdAt`
 
 ## RecommendationItem
+
 - `id` UUID
 - `sessionId` FK → RecommendationSession
 - `titleId` FK → Title
@@ -64,12 +70,43 @@
 - `createdAt`
 
 ## UserTasteProfile
+
 - `id` UUID
 - `userId` FK → User
 - `data` jsonb (агрегаты: жанры, страны, годы, длительность, темп/тон, люди, флаги контекста)
 - `updatedAt`
 
+## RecommendationExperiment
+
+- `id` UUID
+- `key` string (уникальный ключ эксперимента, напр. `main`)
+- `name` string
+- `description` string nullable
+- `isActive` boolean
+- `config` jsonb (описание вариантов и их параметров, напр. дефолтные `diversityLevel`/`noveltyBias`)
+- `createdAt`, `updatedAt`
+
+## UserExperimentAssignment
+
+- `id` UUID
+- `userId` FK → User
+- `experimentId` FK → RecommendationExperiment
+- `variantKey` string (идентификатор варианта, напр. `A`, `B`, `high_diversity`)
+- `assignedAt` datetime
+- `sticky` boolean (закреплён ли вариант за пользователем)
+
+## CatalogSnapshot
+
+- `id` UUID
+- `tmdbId` int
+- `mediaType` enum
+- `kind` enum: trending | popular
+- `score` float nullable
+- `snapshotDate` datetime
+- `createdAt` datetime
+
 ## Индексы
+
 - `Title.tmdbId` unique; индекс по `mediaType`+`genres` (GIN для jsonb/array) для быстрых выборок.
 - `UserTitleState.userId,status` индекс.
 - `FeedbackEvent.userId,createdAt` индекс.

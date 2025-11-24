@@ -5,12 +5,14 @@ import { CreateUserTitleDto } from './dto/create-user-title.dto';
 import { UpdateUserTitleDto } from './dto/update-user-title.dto';
 import { MediaType, TitleStatus } from '@prisma/client';
 import { mapUserTitleStateToApi } from './user-titles.mapper';
+import { RecommendationEngine } from '../recommendations/recommendation.engine';
 
 @Injectable()
 export class UserTitlesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly titles: TitlesService,
+    private readonly recommendationEngine: RecommendationEngine,
   ) {}
 
   async list(userId: string, status?: TitleStatus, mediaType?: MediaType) {
@@ -57,6 +59,8 @@ export class UserTitlesService {
       },
       include: { title: true },
     });
+    // После изменения состояния тайтла переобучаем профиль вкуса пользователя.
+    await this.recommendationEngine.rebuildUserTasteProfile(userId);
     return mapUserTitleStateToApi(state);
   }
 
@@ -80,6 +84,8 @@ export class UserTitlesService {
       },
       include: { title: true },
     });
+    // Инкрементально обновляем профиль вкуса пользователя.
+    await this.recommendationEngine.rebuildUserTasteProfile(userId);
     return mapUserTitleStateToApi(state);
   }
 }

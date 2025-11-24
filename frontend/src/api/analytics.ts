@@ -20,6 +20,35 @@ export interface TasteMapResponse {
   antiList: { id: string; title: string }[];
 }
 
+export type TasteGalaxyNodeKind = 'user' | 'genre' | 'title';
+
+export interface TasteGalaxyNode {
+  id: string;
+  kind: TasteGalaxyNodeKind;
+  label: string;
+  weight: number;
+  meta?: {
+    mediaType?: string;
+    tmdbRating?: number | null;
+    year?: number | null;
+    posterPath?: string | null;
+  };
+}
+
+export type TasteGalaxyEdgeKind = 'preference' | 'belongs_to' | 'similar';
+
+export interface TasteGalaxyEdge {
+  source: string;
+  target: string;
+  kind: TasteGalaxyEdgeKind;
+  strength: number;
+}
+
+export interface TasteGalaxyResponse {
+  nodes: TasteGalaxyNode[];
+  edges: TasteGalaxyEdge[];
+}
+
 export interface ContextPresetResponse {
   id: string;
   label: string;
@@ -39,6 +68,11 @@ export async function getOverview() {
 
 export async function getTasteMap() {
   const { data } = await api.get<TasteMapResponse>('/analytics/taste-map');
+  return data;
+}
+
+export async function getTasteGalaxy() {
+  const { data } = await api.get<TasteGalaxyResponse>('/analytics/taste-galaxy');
   return data;
 }
 

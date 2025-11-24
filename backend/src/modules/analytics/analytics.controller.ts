@@ -17,6 +17,11 @@ export class AnalyticsController {
     return this.service.tasteMap(req.user.userId);
   }
 
+  @Get('taste-galaxy')
+  tasteGalaxy(@Req() req: any) {
+    return this.service.tasteGalaxy(req.user.userId);
+  }
+
   @Get('history')
   history(@Req() req: any) {
     return this.service.history(req.user.userId);

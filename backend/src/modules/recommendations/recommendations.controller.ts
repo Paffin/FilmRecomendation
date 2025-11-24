@@ -3,6 +3,7 @@ import { RecommendationsService } from './recommendations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
+import { RecommendationTweakDto } from './dto/tweak.dto';
 
 @Controller('recommendations')
 @UseGuards(JwtAuthGuard)
@@ -22,5 +23,10 @@ export class RecommendationsController {
   @Post('feedback')
   feedback(@Req() req: any, @Body() dto: RecommendationFeedbackDto) {
     return this.service.handleFeedback(req.user.userId, dto);
+  }
+
+  @Post('tweak')
+  tweak(@Req() req: any, @Body() dto: RecommendationTweakDto) {
+    return this.service.applyTweak(req.user.userId, dto);
   }
 }

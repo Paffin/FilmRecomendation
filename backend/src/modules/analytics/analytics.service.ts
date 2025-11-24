@@ -3,6 +3,30 @@ import { PrismaService } from '../../common/prisma.service';
 import { TitleStatus } from '@prisma/client';
 import { mapUserTitleStateToApi } from '../user-titles/user-titles.mapper';
 
+type TasteGalaxyNodeKind = 'user' | 'genre' | 'title';
+
+interface TasteGalaxyNode {
+  id: string;
+  kind: TasteGalaxyNodeKind;
+  label: string;
+  weight: number;
+  meta?: {
+    mediaType?: string;
+    tmdbRating?: number | null;
+    year?: number | null;
+    posterPath?: string | null;
+  };
+}
+
+type TasteGalaxyEdgeKind = 'preference' | 'belongs_to' | 'similar';
+
+interface TasteGalaxyEdge {
+  source: string;
+  target: string;
+  kind: TasteGalaxyEdgeKind;
+  strength: number;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -93,6 +117,159 @@ export class AnalyticsService {
         title: d.title.russianTitle ?? d.title.originalTitle,
       })),
     };
+  }
+
+  async tasteGalaxy(userId: string): Promise<{
+    nodes: TasteGalaxyNode[];
+    edges: TasteGalaxyEdge[];
+  }> {
+    const states = await this.prisma.userTitleState.findMany({
+      where: { userId },
+      include: { title: true },
+    });
+
+    if (!states.length) {
+      return { nodes: [], edges: [] };
+    }
+
+    const userNodeId = `user:${userId}`;
+    const nodes: TasteGalaxyNode[] = [
+      {
+        id: userNodeId,
+        kind: 'user',
+        label: 'Вы',
+        weight: 1,
+      },
+    ];
+
+    const genreAgg: Record<
+      string,
+      {
+        weight: number;
+        count: number;
+      }
+    > = {};
+
+    states.forEach((state) => {
+      const base =
+        state.liked || state.rating
+          ? 2
+          : state.status === TitleStatus.watched
+            ? 1
+            : 0.5;
+      const sign = state.disliked ? -1 : 1;
+      const w = base * sign;
+      state.title.genres?.forEach((g) => {
+        if (!genreAgg[g]) {
+          genreAgg[g] = { weight: 0, count: 0 };
+        }
+        genreAgg[g].weight += w;
+        genreAgg[g].count += 1;
+      });
+    });
+
+    const topGenres = Object.entries(genreAgg)
+      .sort((a, b) => b[1].weight - a[1].weight)
+      .slice(0, 6);
+
+    const edges: TasteGalaxyEdge[] = [];
+
+    topGenres.forEach(([genre, stats]) => {
+      const nodeId = `genre:${genre}`;
+      nodes.push({
+        id: nodeId,
+        kind: 'genre',
+        label: genre,
+        weight: stats.weight,
+      });
+      const strength = Math.max(0.1, Math.min(1, stats.weight / (states.length || 1)));
+      edges.push({
+        source: userNodeId,
+        target: nodeId,
+        kind: 'preference',
+        strength,
+      });
+    });
+
+    const titleNodesById = new Map<string, TasteGalaxyNode>();
+    const genreIds = new Set(topGenres.map(([g]) => g));
+
+    topGenres.forEach(([genre]) => {
+      const genreNodeId = `genre:${genre}`;
+      const genreStates = states
+        .filter((s) => s.title.genres?.includes(genre))
+        .slice(0);
+
+      const scored = genreStates
+        .map((s) => {
+          const liked = s.liked;
+          const disliked = s.disliked;
+          const rating = s.rating ?? s.title.tmdbRating ?? 0;
+          const score =
+            (liked ? 3 : 0) + (disliked ? -3 : 0) + rating / 2 + (s.status === TitleStatus.watched ? 1 : 0);
+          return { state: s, score };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      scored.slice(0, 6).forEach(({ state, score }) => {
+        const title = state.title;
+        const nodeId = `title:${title.id}`;
+        if (!titleNodesById.has(nodeId)) {
+          const year = title.releaseDate?.getFullYear() ?? null;
+          titleNodesById.set(nodeId, {
+            id: nodeId,
+            kind: 'title',
+            label: title.russianTitle ?? title.originalTitle,
+            weight: score,
+            meta: {
+              mediaType: title.mediaType,
+              tmdbRating: title.tmdbRating ?? null,
+              year,
+              posterPath: title.posterPath ?? null,
+            },
+          });
+        }
+
+        edges.push({
+          source: genreNodeId,
+          target: nodeId,
+          kind: 'belongs_to',
+          strength: 0.8,
+        });
+      });
+    });
+
+    // Дополнительные связи «похожие тайтлы» по пересечению жанров
+    const titleNodes = Array.from(titleNodesById.values());
+    for (let i = 0; i < titleNodes.length; i += 1) {
+      for (let j = i + 1; j < titleNodes.length; j += 1) {
+        const a = titleNodes[i];
+        const b = titleNodes[j];
+        const aId = a.id.replace('title:', '');
+        const bId = b.id.replace('title:', '');
+        const aState = states.find((s) => s.title.id === aId);
+        const bState = states.find((s) => s.title.id === bId);
+        if (!aState || !bState) continue;
+        const genresA = (aState.title.genres ?? []).filter((g) => genreIds.has(g));
+        const genresB = (bState.title.genres ?? []).filter((g) => genreIds.has(g));
+        if (!genresA.length || !genresB.length) continue;
+        const intersection = genresA.filter((g) => genresB.includes(g)).length;
+        const union = new Set([...genresA, ...genresB]).size || 1;
+        const jaccard = intersection / union;
+        if (jaccard >= 0.5) {
+          edges.push({
+            source: a.id,
+            target: b.id,
+            kind: 'similar',
+            strength: jaccard,
+          });
+        }
+      }
+    }
+
+    nodes.push(...titleNodes);
+
+    return { nodes, edges };
   }
 
   async history(userId: string) {

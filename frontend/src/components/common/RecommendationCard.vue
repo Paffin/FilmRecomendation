@@ -22,6 +22,43 @@
           <li v-for="reason in explanation" :key="reason">{{ reason }}</li>
         </ul>
       </div>
+      <div v-if="showWhatIf" class="whatif">
+        <span class="whatif-label">Что если...</span>
+        <div class="whatif-row">
+          <span class="whatif-chip">другой хронометраж</span>
+          <Button
+            size="small"
+            text
+            :label="'Короче'"
+            :severity="runtimeTweak === 'shorter' ? 'primary' : 'secondary'"
+            @click="toggleRuntime('shorter')"
+          />
+          <Button
+            size="small"
+            text
+            :label="'Длиннее'"
+            :severity="runtimeTweak === 'longer' ? 'primary' : 'secondary'"
+            @click="toggleRuntime('longer')"
+          />
+        </div>
+        <div class="whatif-row">
+          <span class="whatif-chip">другое настроение</span>
+          <Button
+            size="small"
+            text
+            :label="'Легче'"
+            :severity="toneTweak === 'lighter' ? 'primary' : 'secondary'"
+            @click="toggleTone('lighter')"
+          />
+          <Button
+            size="small"
+            text
+            :label="'Тяжелее'"
+            :severity="toneTweak === 'heavier' ? 'primary' : 'secondary'"
+            @click="toggleTone('heavier')"
+          />
+        </div>
+      </div>
       <div class="actions">
         <Button icon="pi pi-eye" :label="t('recommendations.more')" text @click="$emit('details')" />
         <span class="spacer" />
@@ -52,10 +89,10 @@
       </div>
     </div>
   </div>
-</template>
+ </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import { useI18n } from 'vue-i18n';
@@ -70,9 +107,18 @@ interface Props {
   busy?: boolean;
   statusLabel?: string;
   canAddToWatchlist?: boolean;
+  showWhatIf?: boolean;
 }
 
 const props = defineProps<Props>();
+const emit = defineEmits<{
+  (e: 'details'): void;
+  (e: 'add-to-watchlist'): void;
+  (e: 'watched'): void;
+  (e: 'like'): void;
+  (e: 'dislike'): void;
+  (e: 'tweak', payload: { runtime: 'shorter' | 'longer' | null; tone: 'lighter' | 'heavier' | null }): void;
+}>();
 const { t } = useI18n();
 
 const posterStyle = computed(() =>
@@ -80,6 +126,19 @@ const posterStyle = computed(() =>
     ? { backgroundImage: `url(${props.poster})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : undefined,
 );
+
+const runtimeTweak = ref<'shorter' | 'longer' | null>(null);
+const toneTweak = ref<'lighter' | 'heavier' | null>(null);
+
+const toggleRuntime = (value: 'shorter' | 'longer') => {
+  runtimeTweak.value = runtimeTweak.value === value ? null : value;
+  emit('tweak', { runtime: runtimeTweak.value, tone: toneTweak.value });
+};
+
+const toggleTone = (value: 'lighter' | 'heavier') => {
+  toneTweak.value = toneTweak.value === value ? null : value;
+  emit('tweak', { runtime: runtimeTweak.value, tone: toneTweak.value });
+};
 </script>
 
 <style scoped>
@@ -180,6 +239,40 @@ const posterStyle = computed(() =>
 .why ul {
   margin: 0;
   padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.whatif {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  display: grid;
+  gap: 4px;
+}
+
+.whatif-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+.whatif-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.whatif-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.5);
   color: var(--text-secondary);
 }
 
