@@ -85,7 +85,6 @@ const layoutNodes = computed<LayoutNode[]>(() => {
   const centerX = 50;
   const centerY = 50;
   const genres = nodes.filter((n) => n.kind === 'genre');
-  const titles = nodes.filter((n) => n.kind === 'title');
   const user = nodes.find((n) => n.kind === 'user');
 
   const positions = new Map<string, { x: number; y: number; angle?: number }>();
@@ -303,4 +302,3 @@ const onNodeClick = (node: LayoutNode) => {
   }
 }
 </style>
-

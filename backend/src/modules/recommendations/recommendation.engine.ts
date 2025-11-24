@@ -348,8 +348,21 @@ export class RecommendationEngine {
     states.forEach((state) => {
       const { title } = state;
       const liked = state.liked;
-      const disliked = state.disliked || state.status === 'dropped';
-      const baseWeight = liked ? 2.8 : disliked ? -3 : state.status === 'watched' ? 1.4 : 0.6;
+      const hardDisliked = state.disliked;
+      const dropped = !liked && !hardDisliked && state.status === 'dropped';
+
+      let baseWeight: number;
+      if (liked) {
+        baseWeight = 3.0;
+      } else if (hardDisliked) {
+        baseWeight = -3.0;
+      } else if (dropped) {
+        baseWeight = -1.2;
+      } else if (state.status === 'watched') {
+        baseWeight = 1.6;
+      } else {
+        baseWeight = 0.8;
+      }
 
       const daysAgo =
         (now - state.lastInteractionAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -360,13 +373,16 @@ export class RecommendationEngine {
       const weight = baseWeight * recencyFactor * sourceFactor;
 
       if (liked) likedTitleIds.push(title.id);
-      if (disliked) dislikedTitleIds.push(title.id);
+      if (hardDisliked || dropped) dislikedTitleIds.push(title.id);
       seenTitleIds.push(title.id);
       preferredTypes.add(title.mediaType);
 
       title.genres?.forEach((g) => {
-        if (disliked) {
+        if (hardDisliked) {
           genreNegative[g] = (genreNegative[g] ?? 0) + Math.abs(weight);
+        } else if (dropped) {
+          // дроп считаем мягким негативом, а не полным дизлайком
+          genreNegative[g] = (genreNegative[g] ?? 0) + Math.abs(weight) * 0.4;
         } else {
           genrePositive[g] = (genrePositive[g] ?? 0) + weight;
         }
@@ -1063,9 +1079,10 @@ export class RecommendationEngine {
     if (!reasons.size && year) reasons.add(`Подходит под ваши любимые годы (${year})`);
     if (!reasons.size) reasons.add('Сбалансированное совпадение с вашим профилем вкуса');
 
-    // подсказка про антисписок
-    if (profile.genreNegative && Object.keys(profile.genreNegative).length > 0) {
-      reasons.add('Мы избегаем ваших стоп-жанров и антисписка');
+    // подсказка про антисписок — только если текущий тайтл сам почти не задевает стоп‑жанры
+    const antiSignal = (item.signals.anti ?? 0) as number;
+    if (profile.genreNegative && Object.keys(profile.genreNegative).length > 0 && antiSignal >= -0.05) {
+      reasons.add('Мы стараемся обходить ваши стоп-жанры и антисписок');
     }
 
     return Array.from(reasons).slice(0, 4);

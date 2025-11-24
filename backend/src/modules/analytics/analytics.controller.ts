@@ -18,7 +18,7 @@ export class AnalyticsController {
   }
 
   @Get('taste-galaxy')
-  tasteGalaxy(@Req() req: any) {
+  tasteGalaxy(@Req() req: any): Promise<any> {
     return this.service.tasteGalaxy(req.user.userId);
   }
 
