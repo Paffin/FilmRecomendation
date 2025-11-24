@@ -52,7 +52,23 @@
           </div>
         </div>
       </div>
-      <Button :label="t('common.refresh')" icon="pi pi-refresh" severity="secondary" :loading="loading" @click="load" />
+      <div class="top-actions">
+        <Button
+          :label="t('common.refresh')"
+          icon="pi pi-refresh"
+          severity="secondary"
+          :loading="loading"
+          @click="load"
+        />
+        <Button
+          size="small"
+          outlined
+          icon="pi pi-window-maximize"
+          :severity="focusMode ? 'primary' : 'secondary'"
+          :label="focusMode ? 'Режим списка' : 'Режим фокуса'"
+          @click="toggleFocusMode"
+        />
+      </div>
     </div>
 
     <div v-if="contextTags.length" class="context-tags surface-card">
@@ -74,28 +90,64 @@
     <div v-if="loading" class="list">
       <Skeleton v-for="n in 5" :key="n" height="240px" border-radius="16px" />
     </div>
-    <TransitionGroup v-else name="rec-fade" tag="div" class="list">
-      <div v-if="recommendations.length === 0" class="empty">{{ t('recommendations.empty') }}</div>
-      <RecommendationCard
-        v-for="item in recommendations"
-        v-else
-        :key="item.id"
-        :title="item.displayTitle"
-        :meta="item.meta"
-        :secondary-meta="item.secondaryMeta"
-        :tags="item.tags"
-        :poster="item.poster"
-        :explanation="item.explanation"
-        :status-label="item.statusLabel"
-        :can-add-to-watchlist="item.canAddToWatchlist"
-        :busy="actionLoading === item.id"
-        @like="like(item)"
-        @watched="watched(item)"
-        @dislike="dislike(item)"
-        @details="openDetails(item)"
-        @add-to-watchlist="addToWatchlist(item)"
-      />
-    </TransitionGroup>
+    <div v-else>
+      <div v-if="focusMode" class="focus-wrapper">
+        <div v-if="!currentFocus" class="empty">
+          Нет рекомендаций — обновите подборку, чтобы начать режим фокуса.
+        </div>
+        <div v-else class="focus-card">
+          <RecommendationCard
+            :title="currentFocus.displayTitle"
+            :meta="currentFocus.meta"
+            :secondary-meta="currentFocus.secondaryMeta"
+            :tags="currentFocus.tags"
+            :poster="currentFocus.poster"
+            :explanation="currentFocus.explanation"
+            :status-label="currentFocus.statusLabel"
+            :can-add-to-watchlist="currentFocus.canAddToWatchlist"
+            :busy="actionLoading === currentFocus.id"
+            @like="like(currentFocus)"
+            @watched="watched(currentFocus)"
+            @dislike="dislike(currentFocus)"
+            @details="openDetails(currentFocus)"
+            @add-to-watchlist="addToWatchlist(currentFocus)"
+          />
+          <div class="focus-actions">
+            <Button
+              size="small"
+              text
+              label="Следующая рекомендация"
+              icon="pi pi-arrow-right"
+              icon-pos="right"
+              @click="nextFocus"
+            />
+            <Button size="small" text label="К списку" icon="pi pi-list" @click="toggleFocusMode" />
+          </div>
+        </div>
+      </div>
+      <TransitionGroup v-else name="rec-fade" tag="div" class="list">
+        <div v-if="recommendations.length === 0" class="empty">{{ t('recommendations.empty') }}</div>
+        <RecommendationCard
+          v-for="item in recommendations"
+          v-else
+          :key="item.id"
+          :title="item.displayTitle"
+          :meta="item.meta"
+          :secondary-meta="item.secondaryMeta"
+          :tags="item.tags"
+          :poster="item.poster"
+          :explanation="item.explanation"
+          :status-label="item.statusLabel"
+          :can-add-to-watchlist="item.canAddToWatchlist"
+          :busy="actionLoading === item.id"
+          @like="like(item)"
+          @watched="watched(item)"
+          @dislike="dislike(item)"
+          @details="openDetails(item)"
+          @add-to-watchlist="addToWatchlist(item)"
+        />
+      </TransitionGroup>
+    </div>
 
     <div class="evening-block">
       <div class="evening-header">
@@ -199,6 +251,8 @@ const diversityLevel = ref<'soft' | 'balanced' | 'bold'>('balanced');
 const contextPresets = ref<ContextPresetResponse[]>([]);
 const eveningProgram = ref<EveningRecCard[]>([]);
 const eveningLoading = ref(false);
+const focusMode = ref(false);
+const focusIndex = ref(0);
 
 const companies = [
   { label: 'Один', value: 'solo' },
@@ -536,6 +590,24 @@ onMounted(() => {
   load();
   loadContextPresets();
 });
+
+const currentFocus = computed(() => {
+  if (!recommendations.value.length) return null;
+  const idx = Math.min(focusIndex.value, recommendations.value.length - 1);
+  return recommendations.value[idx];
+});
+
+const toggleFocusMode = () => {
+  focusMode.value = !focusMode.value;
+  if (focusMode.value) {
+    focusIndex.value = 0;
+  }
+};
+
+const nextFocus = () => {
+  if (!recommendations.value.length) return;
+  focusIndex.value = (focusIndex.value + 1) % recommendations.value.length;
+};
 </script>
 
 <style scoped>
@@ -550,6 +622,13 @@ onMounted(() => {
   gap: 16px;
   flex-wrap: wrap;
   align-items: flex-start;
+}
+
+.top-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
 }
 
 .context-grid {
@@ -633,6 +712,22 @@ small {
 .rec-fade-leave-to {
   opacity: 0;
   transform: translateY(8px);
+}
+
+.focus-wrapper {
+  margin-top: 16px;
+}
+
+.focus-card {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.focus-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 @media (max-width: 768px) {

@@ -474,7 +474,7 @@ const openEditorDetails = (item: EditorRecCard) => {
   router.push({ path: `/title/${item.id}` });
 };
 
-const handleEditorLike = (item: EditorRecCard) => {
+const handleEditorLike = (_item: EditorRecCard) => {
   toast.add({
     severity: 'info',
     summary: 'Лайк для редактора вкуса',
@@ -483,7 +483,7 @@ const handleEditorLike = (item: EditorRecCard) => {
   });
 };
 
-const handleEditorWatched = (item: EditorRecCard) => {
+const handleEditorWatched = (_item: EditorRecCard) => {
   toast.add({
     severity: 'info',
     summary: 'Смотрел',
@@ -492,7 +492,7 @@ const handleEditorWatched = (item: EditorRecCard) => {
   });
 };
 
-const handleEditorDislike = (item: EditorRecCard) => {
+const handleEditorDislike = (_item: EditorRecCard) => {
   toast.add({
     severity: 'info',
     summary: 'Дизлайк',

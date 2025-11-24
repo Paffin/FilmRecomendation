@@ -59,6 +59,11 @@
           allowfullscreen
         />
       </div>
+      <p class="trailer-note">
+        Если встроенный плеер не показывает видео из‑за возрастных ограничений YouTube, вы можете открыть трейлер
+        напрямую:
+        <a :href="youtubeWatchUrl" target="_blank" rel="noopener noreferrer">смотреть на YouTube</a>.
+      </p>
     </div>
     <div>
       <h3 class="section-title">Похожие тайтлы</h3>
@@ -264,6 +269,10 @@ const trailerUrl = computed(() =>
   trailerKey.value ? `https://www.youtube.com/embed/${trailerKey.value}?autoplay=0&hl=ru` : '',
 );
 
+const youtubeWatchUrl = computed(() =>
+  trailerKey.value ? `https://www.youtube.com/watch?v=${trailerKey.value}` : '#',
+);
+
 const year = computed(() => (title.value?.releaseDate ? new Date(title.value.releaseDate).getFullYear() : '—'));
 const mediaLabel = computed(() => {
   if (!title.value) return '';
@@ -330,6 +339,17 @@ watch(
   height: 100%;
   border: 0;
   display: block;
+}
+
+.trailer-note {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.trailer-note a {
+  color: #8ab4ff;
+  text-decoration: underline;
 }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .poster { height: 220px; } }
 </style>

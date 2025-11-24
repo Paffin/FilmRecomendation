@@ -102,6 +102,19 @@ interface TasteProfileData {
   updatedAt: string;
 }
 
+interface GroupTasteData {
+  schemaVersion: number;
+  genrePositive: Record<string, number>;
+  genreNegative: Record<string, number>;
+  countryWeights: Record<string, number>;
+  decadeWeights: Record<string, number>;
+  languageWeights: Record<string, number>;
+  peopleWeights: Record<string, number>;
+  runtimeAvg: number | null;
+  runtimeMedian: number | null;
+  updatedAt: string;
+}
+
 interface UserTasteProfile
   extends Omit<
     TasteProfileData,
@@ -153,11 +166,13 @@ export class RecommendationEngine {
       weights.people *= context.overrides.people;
     }
     const profile = await this.loadUserProfile(userId);
-    const candidates = await this.buildCandidatePool(userId, profile, limit * 10, context);
+    const group = await this.loadGroupTasteProfile(userId, context.company);
+    const effectiveProfile = group ? this.mergeProfiles(profile, group) : profile;
+    const candidates = await this.buildCandidatePool(userId, effectiveProfile, limit * 10, context);
 
     const scored = candidates
-      .filter((c) => !profile.dislikedTitleIds.has(c.id))
-      .map((title) => this.scoreCandidate(title, profile, context, weights))
+      .filter((c) => !effectiveProfile.dislikedTitleIds.has(c.id))
+      .map((title) => this.scoreCandidate(title, effectiveProfile, context, weights))
       .sort((a, b) => b.score - a.score);
 
     const diversified = this.diversify(scored, limit, context);
@@ -193,8 +208,65 @@ export class RecommendationEngine {
       title: item.title,
       score: item.score,
       signals: item.signals,
-      explanation: this.buildExplanation(item, profile, context),
+      explanation: this.buildExplanation(item, effectiveProfile, context),
     }));
+  }
+
+  private async loadGroupTasteProfile(
+    userId: string,
+    company?: string,
+  ): Promise<GroupTasteData | null> {
+    if (!company || company === 'solo') return null;
+    const row = await this.prisma.groupTasteProfile.findUnique({
+      where: {
+        userId_companyType: { userId, companyType: company },
+      },
+    });
+    if (!row) return null;
+    const data = row.data as unknown as Partial<GroupTasteData>;
+    if (!data || data.schemaVersion !== 1) return null;
+    return {
+      schemaVersion: 1,
+      genrePositive: data.genrePositive ?? {},
+      genreNegative: data.genreNegative ?? {},
+      countryWeights: data.countryWeights ?? {},
+      decadeWeights: data.decadeWeights ?? {},
+      languageWeights: data.languageWeights ?? {},
+      peopleWeights: data.peopleWeights ?? {},
+      runtimeAvg: data.runtimeAvg ?? null,
+      runtimeMedian: data.runtimeMedian ?? null,
+      updatedAt: data.updatedAt ?? new Date(0).toISOString(),
+    };
+  }
+
+  private mergeProfiles(user: UserTasteProfile, group: GroupTasteData): UserTasteProfile {
+    const mix = (u: Record<string, number>, g: Record<string, number>) => {
+      const result: Record<string, number> = { ...u };
+      Object.keys(g).forEach((key) => {
+        const uVal = u[key] ?? 0;
+        const gVal = g[key] ?? 0;
+        result[key] = uVal * 0.6 + gVal * 0.4;
+      });
+      return result;
+    };
+
+    const merged: UserTasteProfile = {
+      ...user,
+      genrePositive: mix(user.genrePositive, group.genrePositive),
+      genreNegative: mix(user.genreNegative, group.genreNegative),
+      countryWeights: mix(user.countryWeights, group.countryWeights),
+      decadeWeights: mix(user.decadeWeights, group.decadeWeights),
+      languageWeights: mix(user.languageWeights, group.languageWeights),
+      peopleWeights: mix(user.peopleWeights, group.peopleWeights),
+      runtimeAvg:
+        user.runtimeAvg !== null || group.runtimeAvg !== null
+          ? ((user.runtimeAvg ?? group.runtimeAvg ?? 0) * 0.6 +
+              (group.runtimeAvg ?? user.runtimeAvg ?? 0) * 0.4)
+          : null,
+      runtimeMedian: user.runtimeMedian,
+    };
+
+    return merged;
   }
 
   private async loadUserProfile(userId: string): Promise<UserTasteProfile> {

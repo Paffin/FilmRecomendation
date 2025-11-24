@@ -232,7 +232,7 @@ const emotionChartOptions: ChartOptions<'line'> = {
     tooltip: {
       callbacks: {
         label: (ctx) => {
-          const v = ctx.parsed.y;
+          const v = ctx.parsed.y ?? 0;
           if (v < -0.3) return 'Преимущественно лёгкий просмотр';
           if (v > 0.3) return 'Преимущественно тяжёлый просмотр';
           return 'Смешанное настроение';

@@ -7,7 +7,7 @@ import {
 } from './recommendation.engine';
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
-import { FeedbackContext, TitleStatus, Prisma } from '@prisma/client';
+import { FeedbackContext, TitleStatus, Prisma, Title, RecommendationSession } from '@prisma/client';
 import { pickVariantForUser } from './recommendation.config';
 import { inferSignalGroup } from './signals';
 import { mapTitleToApi } from '../titles/title.mapper';
@@ -64,7 +64,7 @@ export class RecommendationsService {
     const session = await this.prisma.recommendationSession.create({
       data: {
         userId,
-        context: { ...context, variant } as Prisma.InputJsonObject,
+        context: { ...(context as unknown as Prisma.InputJsonObject), variant },
       },
     });
 
@@ -167,6 +167,7 @@ export class RecommendationsService {
 
     // Для любого фидбэка (лайк, дизлайк, смотрел) пытаемся подобрать новую, более релевантную замену
     const context = session.context as RecommendationContext;
+    await this.updateGroupTasteProfile(userId, session, title, isLike || isWatched ? 1 : -1);
     const replacement = (await this.engine.recommend(userId, 1, context))[0];
     if (replacement) {
       // Если такой тайтл уже присутствует в текущей сессии, не создаём дубликат (из‑за unique(sessionId,titleId))
@@ -223,6 +224,107 @@ export class RecommendationsService {
     };
   }
 
+  private async updateGroupTasteProfile(
+    userId: string,
+    session: RecommendationSession,
+    title: Title,
+    value: number,
+  ) {
+    const ctx = (session.context ?? {}) as any;
+    const company = ctx.company as string | undefined;
+    if (!company || company === 'solo') return;
+    if (company !== 'duo' && company !== 'friends' && company !== 'family') return;
+
+    const existing = await this.prisma.groupTasteProfile.findUnique({
+      where: {
+        userId_companyType: { userId, companyType: company },
+      },
+    });
+
+    type GroupTasteData = {
+      schemaVersion: number;
+      genrePositive: Record<string, number>;
+      genreNegative: Record<string, number>;
+      countryWeights: Record<string, number>;
+      decadeWeights: Record<string, number>;
+      languageWeights: Record<string, number>;
+      peopleWeights: Record<string, number>;
+      runtimeAvg: number | null;
+      runtimeMedian: number | null;
+      updatedAt: string;
+    };
+
+    const data: GroupTasteData = existing?.data
+      ? ({
+          schemaVersion: 1,
+          genrePositive: {},
+          genreNegative: {},
+          countryWeights: {},
+          decadeWeights: {},
+          languageWeights: {},
+          peopleWeights: {},
+          runtimeAvg: null,
+          runtimeMedian: null,
+          updatedAt: new Date().toISOString(),
+          ...(existing.data as any),
+        } as GroupTasteData)
+      : {
+          schemaVersion: 1,
+          genrePositive: {},
+          genreNegative: {},
+          countryWeights: {},
+          decadeWeights: {},
+          languageWeights: {},
+          peopleWeights: {},
+          runtimeAvg: null,
+          runtimeMedian: null,
+          updatedAt: new Date().toISOString(),
+        };
+
+    const weight = value;
+
+    (title.genres ?? []).forEach((g) => {
+      if (weight > 0) {
+        data.genrePositive[g] = (data.genrePositive[g] ?? 0) + weight;
+      } else if (weight < 0) {
+        data.genreNegative[g] = (data.genreNegative[g] ?? 0) + Math.abs(weight);
+      }
+    });
+
+    (title.countries ?? []).forEach((c) => {
+      data.countryWeights[c] = (data.countryWeights[c] ?? 0) + weight * 0.7;
+    });
+
+    if (title.originalLanguage) {
+      data.languageWeights[title.originalLanguage] =
+        (data.languageWeights[title.originalLanguage] ?? 0) + weight * 0.5;
+    }
+
+    const year = title.releaseDate?.getFullYear();
+    if (year) {
+      const decade = Math.floor(year / 10) * 10;
+      data.decadeWeights[String(decade)] =
+        (data.decadeWeights[String(decade)] ?? 0) + weight * 0.8;
+    }
+
+    const nowIso = new Date().toISOString();
+    data.updatedAt = nowIso;
+
+    await this.prisma.groupTasteProfile.upsert({
+      where: {
+        userId_companyType: { userId, companyType: company },
+      },
+      update: {
+        data: data as unknown as Prisma.InputJsonValue,
+      },
+      create: {
+        userId,
+        companyType: company,
+        data: data as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
   async getEveningProgram(userId: string, query: RecommendationQueryDto) {
     const programLimit = 12;
     const { context, variant } = this.buildContext(userId, query);
@@ -230,7 +332,11 @@ export class RecommendationsService {
     const session = await this.prisma.recommendationSession.create({
       data: {
         userId,
-        context: { ...context, variant, mode: 'evening_program' } as Prisma.InputJsonObject,
+        context: {
+          ...(context as unknown as Prisma.InputJsonObject),
+          variant,
+          mode: 'evening_program',
+        },
       },
     });
 
