@@ -52,13 +52,26 @@ const handleAuthFail = () => {
   router.push('/auth');
 };
 
+const apiErrorListener = (evt: Event) => handleApiError(evt as CustomEvent<string>);
+
 onMounted(() => {
   window.addEventListener('auth-refresh-failed', handleAuthFail);
+  window.addEventListener('api-error', apiErrorListener);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('auth-refresh-failed', handleAuthFail);
+  window.removeEventListener('api-error', apiErrorListener);
 });
+
+function handleApiError(evt: CustomEvent<string>) {
+  toast.add({
+    severity: 'error',
+    summary: 'Ошибка',
+    detail: evt.detail || 'Не удалось выполнить запрос',
+    life: 4000,
+  });
+}
 </script>
 
 <style scoped>

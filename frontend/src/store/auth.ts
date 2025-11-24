@@ -105,7 +105,7 @@ export const useAuthStore = defineStore('auth', {
     async refreshWithCookie(silent = false): Promise<string | null> {
       if (this.refreshBlocked) return null;
       try {
-        const { data } = await api.post('/auth/refresh');
+        const { data } = await api.post('/auth/refresh', undefined, { timeout: 5000 });
         this.setSession(data.user, data.tokens.accessToken);
         markRefreshPresent(true);
         return data.tokens.accessToken ?? null;
@@ -138,6 +138,7 @@ export const useAuthStore = defineStore('auth', {
       }
       this.user = null;
       this.accessToken = null;
+      this.refreshBlocked = false;
       sessionStorage.removeItem(persistKey);
       markRefreshPresent(false);
       setAccessToken(null);
@@ -145,6 +146,7 @@ export const useAuthStore = defineStore('auth', {
     setSession(user: User, accessToken: string) {
       this.user = user;
       this.accessToken = accessToken;
+      this.refreshBlocked = false;
       setAccessToken(accessToken);
       this.persistUser();
       markRefreshPresent(true);

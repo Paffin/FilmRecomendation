@@ -69,6 +69,27 @@ import { completeOnboarding } from '../../api/users';
 import { useAuthStore } from '../../store/auth';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
+const TMDB_GENRE_MAP: Record<number, string> = {
+  28: 'боевик',
+  12: 'приключения',
+  16: 'анимация',
+  35: 'комедия',
+  80: 'криминал',
+  99: 'документальный',
+  18: 'драма',
+  10751: 'семейный',
+  14: 'фэнтези',
+  36: 'история',
+  27: 'ужасы',
+  10402: 'музыка',
+  9648: 'детектив',
+  10749: 'мелодрама',
+  878: 'фантастика',
+  10770: 'телефильм',
+  53: 'триллер',
+  10752: 'военный',
+  37: 'вестерн',
+};
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -115,7 +136,7 @@ const search = async () => {
       tmdbId: r.id,
       title: r.title || r.name || 'Без названия',
       year: (r.release_date || r.first_air_date || '').slice(0, 4) || undefined,
-      genres: [],
+      genres: (r.genre_ids || []).map((id: number) => TMDB_GENRE_MAP[id]).filter(Boolean).slice(0, 3),
       mediaType: mapMediaType(r.media_type ?? activeType.value),
       poster: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
     }));

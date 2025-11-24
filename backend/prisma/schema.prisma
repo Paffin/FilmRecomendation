@@ -151,14 +151,19 @@ model RefreshToken {
   id         String   @id @default(uuid())
   userId     String
   tokenHash  String   @unique
+  jti        String
+  familyId   String
   userAgent  String?
   ip         String?
   expiresAt  DateTime
   revokedAt  DateTime?
+  lastUsedAt DateTime @default(now())
   createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([familyId])
+  @@index([userId, familyId])
   @@index([expiresAt])
 }

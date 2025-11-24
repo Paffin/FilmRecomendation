@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -21,6 +21,8 @@ interface SessionResult {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -56,38 +58,66 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string | undefined, meta: TokenMeta): Promise<SessionResult> {
-    if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+    if (!refreshToken) {
+      this.logRefreshFailure('missing_token', undefined, meta);
+      throw new UnauthorizedException('Refresh token missing');
+    }
 
-    let payload: { sub: string; email: string; exp: number };
+    let payload: { sub: string; email: string; exp: number; jti?: string; fid?: string };
     try {
       payload = await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.get<string>('jwt.refreshSecret'),
       });
     } catch (e) {
+      this.logRefreshFailure('invalid_jwt', undefined, meta);
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     const hashed = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hashed } });
-    if (
-      !stored ||
-      stored.revokedAt ||
-      stored.expiresAt < new Date() ||
-      stored.userId !== payload.sub
-    ) {
-      if (stored && stored.revokedAt) {
-        await this.revokeAllForUser(stored.userId);
-      }
+
+    if (!stored || stored.userId !== payload.sub) {
+      this.logRefreshFailure('not_found', payload, meta, stored?.familyId);
+      if (payload?.sub) await this.revokeAllForUser(payload.sub);
+      throw new UnauthorizedException('Refresh token revoked');
+    }
+
+    if (stored.revokedAt) {
+      this.logRefreshFailure('reuse_revoked', payload, meta, stored.familyId);
+      await this.revokeAllForUser(stored.userId);
+      throw new UnauthorizedException('Refresh token revoked');
+    }
+
+    if (stored.expiresAt < new Date()) {
+      await this.prisma.refreshToken.update({
+        where: { id: stored.id },
+        data: { revokedAt: new Date() },
+      });
+      this.logRefreshFailure('expired', payload, meta, stored.familyId);
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    const hasTrackedJti = stored.jti && stored.jti !== 'legacy';
+    if (hasTrackedJti && payload.jti && stored.jti !== payload.jti) {
+      this.logRefreshFailure('jti_mismatch', payload, meta, stored.familyId);
+      await this.revokeAllForUser(stored.userId);
       throw new UnauthorizedException('Refresh token revoked');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user) throw new UnauthorizedException('User not found');
+    if (!user) {
+      this.logRefreshFailure('user_not_found', payload, meta, stored.familyId);
+      throw new UnauthorizedException('User not found');
+    }
 
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { lastUsedAt: new Date() },
+    });
     await this.prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } });
 
     // Выпускаем новый набор токенов, старый оставляем валидным до истечения, но ограничиваем общее число активных
-    const session = await this.issueSession(user, meta);
+    const session = await this.issueSession(user, meta, stored.familyId);
     await this.trimActiveTokens(user.id, 5);
     return session;
   }
@@ -136,16 +166,18 @@ export class AuthService {
     } as const;
   }
 
-  private async issueSession(user: any, meta: TokenMeta): Promise<SessionResult> {
+  private async issueSession(user: any, meta: TokenMeta, familyId?: string): Promise<SessionResult> {
     // Retry a couple of times in case of rare token hash collision (unique constraint)
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const tokens = this.generateTokens(user.id, user.email);
+      const tokens = this.generateTokens(user.id, user.email, familyId);
       try {
         await this.prisma.refreshToken.create({
           data: {
             userId: user.id,
             tokenHash: this.hashToken(tokens.refreshToken),
             expiresAt: tokens.refreshExpiresAt,
+            familyId: tokens.familyId,
+            jti: tokens.refreshJti,
             userAgent: meta.userAgent?.slice(0, 255) ?? null,
             ip: meta.ip ?? null,
           },
@@ -169,10 +201,11 @@ export class AuthService {
     throw new Error('Failed to issue refresh token');
   }
 
-  private generateTokens(userId: string, email: string) {
+  private generateTokens(userId: string, email: string, familyId?: string) {
     const accessExpiresIn = this.config.get<string>('jwt.accessExpiresIn') ?? '15m';
     const refreshExpiresIn = this.config.get<string>('jwt.refreshExpiresIn') ?? '7d';
     const refreshJti = crypto.randomUUID();
+    const family = familyId ?? crypto.randomUUID();
 
     const accessToken = this.jwt.sign(
       { sub: userId, email, jti: crypto.randomUUID() },
@@ -180,7 +213,7 @@ export class AuthService {
     );
 
     const refreshToken = this.jwt.sign(
-      { sub: userId, email, jti: refreshJti },
+      { sub: userId, email, jti: refreshJti, fid: family },
       { secret: this.config.get<string>('jwt.refreshSecret'), expiresIn: refreshExpiresIn },
     );
 
@@ -189,7 +222,7 @@ export class AuthService {
       ? new Date(decoded.exp * 1000)
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    return { accessToken, refreshToken, refreshExpiresAt };
+    return { accessToken, refreshToken, refreshExpiresAt, refreshJti, familyId: family };
   }
 
   private hashToken(token: string) {
@@ -199,7 +232,7 @@ export class AuthService {
   private async trimActiveTokens(userId: string, maxCount: number) {
     const tokens = await this.prisma.refreshToken.findMany({
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ lastUsedAt: 'desc' }, { createdAt: 'desc' }],
     });
     if (tokens.length <= maxCount) return;
     const toDelete = tokens.slice(maxCount);
@@ -220,6 +253,17 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  private logRefreshFailure(
+    reason: string,
+    payload: { sub?: string; jti?: string } | undefined,
+    meta: TokenMeta,
+    familyId?: string,
+  ) {
+    this.logger.warn(
+      `[auth.refresh] ${reason} user=${payload?.sub ?? 'unknown'} jti=${payload?.jti ?? 'n/a'} family=${familyId ?? 'n/a'} ip=${meta.ip ?? '-'} ua=${(meta.userAgent ?? '').slice(0, 140)}`,
+    );
   }
 
   private sanitize(user: { passwordHash: string; [key: string]: any }) {

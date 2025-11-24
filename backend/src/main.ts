@@ -28,6 +28,16 @@ async function bootstrap() {
     }),
   );
 
+  app.use(
+    '/api/auth',
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 30, // более строгий лимит на auth
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   app.use(cookieParser());
 
   app.setGlobalPrefix('api');

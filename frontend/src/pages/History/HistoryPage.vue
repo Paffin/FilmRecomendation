@@ -26,6 +26,14 @@
           <div class="meta">{{ formatDate(item.lastInteractionAt) }} · {{ meta(item) }}</div>
         </div>
         <div class="actions">
+          <Dropdown
+            v-model="item.status"
+            :options="statusOptions"
+            option-label="label"
+            option-value="value"
+            class="status-dropdown"
+            @change="(e: DropdownChangeEvent) => changeStatus(item, e.value as TitleStatus)"
+          />
           <Rating :model-value="item.rating ?? 0" :cancel="false" @update:model-value="(v) => changeRating(item, v)" />
           <div class="buttons">
             <Button icon="pi pi-thumbs-up" text severity="success" :outlined="!item.liked" @click="() => like(item)" />
@@ -39,7 +47,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import Dropdown from 'primevue/dropdown';
+import Dropdown, { type DropdownChangeEvent } from 'primevue/dropdown';
 import MultiSelect from 'primevue/multiselect';
 import Rating from 'primevue/rating';
 import Button from 'primevue/button';
@@ -47,7 +55,7 @@ import Skeleton from 'primevue/skeleton';
 import { useToast } from 'primevue/usetoast';
 import { getHistory } from '../../api/analytics';
 import { updateUserTitle } from '../../api/userTitles';
-import type { UserTitleStateResponse } from '../../api/types';
+import type { UserTitleStateResponse, TitleStatus } from '../../api/types';
 
 const periods = [
   { label: '30 дней', value: 30 },
@@ -60,6 +68,12 @@ const mediaTypes = [
   { label: 'Сериалы', value: 'tv' },
   { label: 'Аниме', value: 'anime' },
   { label: 'Мультфильмы', value: 'cartoon' },
+];
+const statusOptions = [
+  { label: 'Смотрел', value: 'watched' },
+  { label: 'Смотрю', value: 'watching' },
+  { label: 'В планах', value: 'planned' },
+  { label: 'Бросил', value: 'dropped' },
 ];
 
 const period = ref(90);
@@ -135,6 +149,16 @@ const replaceItem = (updated: UserTitleStateResponse) => {
   const idx = history.value.findIndex((h) => h.id === updated.id);
   if (idx >= 0) history.value[idx] = updated;
 };
+
+const changeStatus = async (item: UserTitleStateResponse, status: TitleStatus) => {
+  try {
+    const updated = await updateUserTitle(item.id, { status });
+    replaceItem(updated);
+    toast.add({ severity: 'success', summary: 'Статус обновлён', life: 2000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Не удалось изменить статус', life: 2500 });
+  }
+};
 </script>
 
 <style scoped>
@@ -166,6 +190,7 @@ const replaceItem = (updated: UserTitleStateResponse) => {
 .meta { color: var(--text-secondary); }
 .actions { display: flex; align-items: center; gap: 12px; }
 .buttons { display: flex; gap: 6px; }
+.status-dropdown { min-width: 150px; }
 .empty { color: var(--text-secondary); }
 @media (max-width: 720px) { .row { flex-direction: column; align-items: flex-start; gap: 10px; } }
 </style>
