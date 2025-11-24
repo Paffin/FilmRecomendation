@@ -8,6 +8,11 @@ const api = axios.create({
 let accessToken: string | null = null;
 let refreshHandler: (() => Promise<string | null | void>) | null = null;
 let refreshInFlight: Promise<string | null | void> | null = null;
+const emitAuthFailure = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth-refresh-failed'));
+  }
+};
 
 api.interceptors.request.use((config) => {
   if (accessToken) {
@@ -35,7 +40,11 @@ api.interceptors.response.use(
         }
       } catch (e) {
         refreshInFlight = null;
+        emitAuthFailure();
       }
+    }
+    if (error.response?.status === 401) {
+      emitAuthFailure();
     }
     return Promise.reject(error);
   },

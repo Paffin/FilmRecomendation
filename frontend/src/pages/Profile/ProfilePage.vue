@@ -63,9 +63,12 @@
     <div class="surface-card">
       <h3 class="section-title">{{ t('profile.antiList') }}</h3>
       <div v-if="loading" class="chart-skeleton"><Skeleton height="120px" border-radius="12px" /></div>
-      <ul v-else-if="taste && taste.antiList.length" class="anti">
-        <li v-for="item in taste.antiList" :key="item.id">{{ item.title }}</li>
-      </ul>
+      <div v-else-if="taste && taste.antiList.length" class="anti">
+        <div v-for="item in taste.antiList" :key="item.id" class="anti-row">
+          <span>{{ item.title }}</span>
+          <Button label="Вернуть" size="small" text icon="pi pi-undo" @click="() => restoreFromAnti(item.id)" />
+        </div>
+      </div>
       <div v-else class="empty">Вы ещё не добавляли тайтлы в антисписок</div>
     </div>
   </div>
@@ -74,6 +77,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import Skeleton from 'primevue/skeleton';
+import Button from 'primevue/button';
 import { Bar, Radar, Doughnut } from 'vue-chartjs';
 import {
   Chart as ChartJS,
@@ -92,6 +96,8 @@ import type { ChartOptions } from 'chart.js';
 import { getOverview, getTasteMap } from '../../api/analytics';
 import type { OverviewResponse, TasteMapResponse } from '../../api/analytics';
 import { useI18n } from 'vue-i18n';
+import { updateUserTitle, getUserTitleByTitleId } from '../../api/userTitles';
+import { useToast } from 'primevue/usetoast';
 
 ChartJS.register(
   RadialLinearScale,
@@ -110,6 +116,7 @@ const overview = ref<OverviewResponse | null>(null);
 const taste = ref<TasteMapResponse | null>(null);
 const loading = ref(true);
 const { t } = useI18n();
+const toast = useToast();
 
 onMounted(async () => {
   try {
@@ -120,6 +127,20 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+const restoreFromAnti = async (titleId: string) => {
+  try {
+    const state = await getUserTitleByTitleId(titleId);
+    if (!state) throw new Error('not found');
+    await updateUserTitle(state.id, { disliked: false, status: 'planned' });
+    if (taste.value) {
+      taste.value.antiList = taste.value.antiList.filter((i) => i.id !== titleId);
+    }
+    toast.add({ severity: 'success', summary: 'Вернули в рекомендации', life: 2000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Не удалось вернуть', life: 2500 });
+  }
+};
 
 const topEntries = (record: Record<string, number>, limit = 6) =>
   Object.entries(record)
@@ -224,5 +245,12 @@ const doughnutOptions: ChartOptions<'doughnut'> = {
   padding-left: 18px;
   display: grid;
   gap: 6px;
+}
+
+.anti-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 </style>

@@ -13,6 +13,7 @@ interface AuthState {
   accessToken: string | null;
   loading: boolean;
   initialized: boolean;
+  refreshBlocked: boolean;
 }
 
 const persistKey = 'kinovkus-user';
@@ -44,6 +45,7 @@ export const useAuthStore = defineStore('auth', {
     accessToken: null,
     loading: false,
     initialized: false,
+    refreshBlocked: false,
   }),
   actions: {
     hydrateUser() {
@@ -66,7 +68,7 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       if (this.initialized) return;
       this.hydrateUser();
-      const canRefresh = this.user !== null || hasRefreshMarker();
+      const canRefresh = (this.user !== null || hasRefreshMarker()) && !this.refreshBlocked;
 
       registerUnauthorizedHandler(async () =>
         this.user || hasRefreshMarker() ? this.refreshWithCookie(true) : null,
@@ -101,6 +103,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async refreshWithCookie(silent = false): Promise<string | null> {
+      if (this.refreshBlocked) return null;
       try {
         const { data } = await api.post('/auth/refresh');
         this.setSession(data.user, data.tokens.accessToken);
@@ -108,6 +111,7 @@ export const useAuthStore = defineStore('auth', {
         return data.tokens.accessToken ?? null;
       } catch (e) {
         if (!silent) throw e;
+        this.refreshBlocked = true;
         markRefreshPresent(false);
         this.logout(false);
         return null;

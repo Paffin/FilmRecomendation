@@ -12,6 +12,12 @@
           <span v-if="title.runtime"> · {{ title.runtime }} мин</span>
         </p>
         <p class="overview">{{ title.overview }}</p>
+        <div v-if="whyReasons.length" class="why">
+          <div class="why-title">Почему в рекомендациях</div>
+          <ul>
+            <li v-for="r in whyReasons" :key="r">{{ r }}</li>
+          </ul>
+        </div>
         <div class="chips">
           <Tag v-for="g in title.genres" :key="g" :value="g" />
           <Tag v-for="c in title.countries" :key="c" severity="success" :value="c" />
@@ -65,6 +71,7 @@ const similar = ref<{ tmdbId: number; title: string; meta: string; poster: strin
 const loading = ref(true);
 const similarLoading = ref(true);
 const saving = ref(false);
+const whyReasons = ref<string[]>([]);
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 
@@ -75,11 +82,26 @@ const load = async () => {
     const [t, s] = await Promise.all([getTitle(id), getUserTitleByTitleId(id)]);
     title.value = t;
     state.value = s;
+    parseWhy();
   } finally {
     loading.value = false;
   }
 
   fetchSimilar();
+};
+
+const parseWhy = () => {
+  const raw = (route.query.why as string | undefined) ?? '';
+  if (!raw) {
+    whyReasons.value = [];
+    return;
+  }
+  try {
+    const decoded = decodeURIComponent(raw);
+    whyReasons.value = decoded.split('||').filter(Boolean).slice(0, 5);
+  } catch {
+    whyReasons.value = [];
+  }
 };
 
 const fetchSimilar = async () => {
@@ -201,5 +223,8 @@ onMounted(load);
 .sim-poster { width: 100%; height: 120px; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,0.04); }
 .sim-info { display: flex; flex-direction: column; gap: 6px; }
 .empty { color: var(--text-secondary); }
+.why { margin: 12px 0; }
+.why-title { font-weight: 700; margin-bottom: 6px; }
+.why ul { margin: 0; padding-left: 18px; color: var(--text-secondary); }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .poster { height: 220px; } }
 </style>

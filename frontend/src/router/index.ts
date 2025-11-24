@@ -29,6 +29,15 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  // keep onboarding flag in sync with backend so navigation unlocks right after completion
+  if (auth.isAuthenticated && !auth.isOnboarded && !auth.loading) {
+    try {
+      await auth.fetchMe();
+    } catch {
+      // ignore, handled by fetchMe
+    }
+  }
+
   if (to.path === '/auth' && auth.isAuthenticated) {
     return next('/recommendations');
   }

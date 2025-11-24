@@ -24,13 +24,15 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router';
-import { useRouter } from 'vue-router';
+import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { onMounted, onBeforeUnmount } from 'vue';
 import Toast from 'primevue/toast';
+import { useToast } from 'primevue/usetoast';
 import { useAuthStore } from './store/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
+const toast = useToast();
 
 auth.bootstrap();
 
@@ -38,6 +40,25 @@ const logout = () => {
   auth.logout();
   router.push('/auth');
 };
+
+const handleAuthFail = () => {
+  toast.add({
+    severity: 'warn',
+    summary: 'Сессия истекла',
+    detail: 'Войдите снова, чтобы продолжить',
+    life: 3500,
+  });
+  auth.logout(false);
+  router.push('/auth');
+};
+
+onMounted(() => {
+  window.addEventListener('auth-refresh-failed', handleAuthFail);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('auth-refresh-failed', handleAuthFail);
+});
 </script>
 
 <style scoped>

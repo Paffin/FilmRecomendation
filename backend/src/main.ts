@@ -6,10 +6,27 @@ import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { LoggingInterceptor } from './common/logging.interceptor';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
   const config = app.get(ConfigService);
+
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: false,
+    }),
+  );
+
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 200, // базовый лимит, можно вынести в конфиг
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
 
   app.use(cookieParser());
 

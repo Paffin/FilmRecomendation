@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Post, Req, Res, Logger } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -8,6 +8,7 @@ import { Request, Response } from 'express';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly service: AuthService) {}
+  private readonly logger = new Logger(AuthController.name);
 
   @Post('register')
   async register(
@@ -38,9 +39,16 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const token = dto.refreshToken ?? (req.cookies ? req.cookies['refresh_token'] : undefined);
-    const session = await this.service.refresh(token, this.meta(req));
-    this.setCookie(res, session.refreshToken, session.refreshExpiresAt);
-    return { user: session.user, tokens: { accessToken: session.accessToken } };
+    try {
+      const session = await this.service.refresh(token, this.meta(req));
+      this.setCookie(res, session.refreshToken, session.refreshExpiresAt);
+      return { user: session.user, tokens: { accessToken: session.accessToken } };
+    } catch (e: any) {
+      this.logger.warn(
+        `Refresh failed: ip=${req.ip ?? req.socket.remoteAddress} ua=${req.headers['user-agent'] ?? ''} err=${e?.message}`,
+      );
+      throw e;
+    }
   }
 
   @Post('logout')

@@ -157,10 +157,17 @@ const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard =>
     displayTitle: item.title.russianTitle || item.title.originalTitle,
     meta: metaParts.join(' · '),
     secondaryMeta: secondary,
-    tags: item.title.genres?.slice(0, 3) ?? [],
+    tags: buildTags(item.title),
     poster: item.title.posterPath ? `${TMDB_IMAGE_BASE}${item.title.posterPath}` : null,
     explanation: item.explanation,
   };
+};
+
+const buildTags = (title: ApiTitle) => {
+  const tags: string[] = [];
+  if (title.genres?.length) tags.push(...title.genres.slice(0, 2));
+  if (title.countries?.length) tags.push(title.countries[0]);
+  return tags;
 };
 
 const load = async () => {
@@ -221,7 +228,8 @@ const dislike = async (item: RecCard) => {
 };
 
 const openDetails = (item: RecCard) => {
-  router.push(`/title/${item.id}`);
+  const why = encodeURIComponent(item.explanation?.join('||') ?? '');
+  router.push({ path: `/title/${item.id}`, query: { why } });
 };
 
 onMounted(load);

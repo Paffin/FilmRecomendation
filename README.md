@@ -1,12 +1,14 @@
 # КиноВкус — рекомендации фильмов/сериалов/аниме (monorepo)
 
 ## Стек
+
 - Backend: NestJS + Prisma + PostgreSQL
 - Frontend: Vue 3 + Vite + PrimeVue + Pinia + Vue Router + Chart.js
 - Infra: Docker Compose (frontend + backend + postgres)
 
 ## Быстрый старт (dev)
-1. Скопируйте `.env.example` в `.env` и заполните ключи TMDB/JWT.
+
+1. Скопируйте `.env.example` в `.env` и заполните ключи TMDB/JWT (не храните реальные ключи в репозитории).
 2. Установите зависимости:
    ```bash
    npm install --workspaces
@@ -30,17 +32,20 @@
    cd frontend
    npm run dev
    ```
-   Фронт откроется на http://localhost:5173 (использует `VITE_API_BASE`).
+   Фронт откроется на http://localhost:5173. В dev включён proxy `/api -> http://localhost:3000`, чтобы httpOnly refresh-куки работали без CORS. При необходимости измените `VITE_API_PROXY_TARGET`.
 
 ## Запуск всего стека через Docker
+
 ```bash
 docker compose -f infra/docker-compose.yml up --build
 ```
+
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3000/api
 - Postgres: localhost:5432 (user/pass: filmrec/filmrec)
 
 ## Структура
+
 - `docs/product` — продуктовые требования и UX‑потоки
 - `docs/architecture` — обзор, модель данных, API, рекомендационный движок
 - `backend` — NestJS код, Prisma schema, Dockerfile
@@ -48,6 +53,7 @@ docker compose -f infra/docker-compose.yml up --build
 - `infra` — docker-compose и nginx конфиг
 
 ## TODO / Следующие шаги
+
 - Расширить RecommendationEngine (100+ сигналов, TMDB кандидаты, rerank)
 - Реализовать реальные вызовы API во фронте и стейты (Pinia)
 - Добавить e2e тесты (Playwright/Cypress)

@@ -10,6 +10,13 @@
 
     <div class="step">
       <h3>Отметьте, что уже смотрели</h3>
+      <div class="progress-row">
+        <div class="progress-label">Нужно минимум 5 тайтлов</div>
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: progress + '%' }" />
+        </div>
+        <div class="progress-count">{{ selectedCount }} / 5</div>
+      </div>
       <div class="search-row">
         <span class="p-input-icon-left w-full">
           <i class="pi pi-search" />
@@ -57,10 +64,12 @@ import type { MediaType } from '../../api/types';
 import { searchTitles } from '../../api/titles';
 import { createUserTitle } from '../../api/userTitles';
 import { completeOnboarding } from '../../api/users';
+import { useAuthStore } from '../../store/auth';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 
 const router = useRouter();
+const auth = useAuthStore();
 const query = ref('');
 const loading = ref(false);
 const searching = ref(false);
@@ -86,6 +95,7 @@ const types = reactive([
 ]);
 
 const selectedCount = computed(() => selected.size);
+const progress = computed(() => Math.min(100, Math.round((selected.size / 5) * 100)));
 const activeType = computed<MediaType | undefined>(() => {
   const active = types.filter((t) => t.selected).map((t) => t.value as MediaType);
   if (active.length === 1) return active[0];
@@ -138,6 +148,12 @@ const complete = async () => {
       ),
     );
     await completeOnboarding();
+    // refresh user to unlock навигацию сразу после онбординга
+    try {
+      await auth.fetchMe();
+    } catch (e) {
+      // fetchMe уже вылогинит при ошибке, перехватываем чтобы не ломать UX
+    }
     toast.add({ severity: 'success', summary: 'Готово', detail: 'Мы настроили ваш профиль вкуса', life: 2500 });
     router.push('/recommendations');
   } catch (e) {
@@ -180,6 +196,32 @@ const mapMediaType = (value?: string | MediaType): MediaType => {
   gap: 10px;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.progress-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0;
+  color: var(--text-secondary);
+}
+
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #8ab4ff, #ff49a7);
 }
 
 .empty {

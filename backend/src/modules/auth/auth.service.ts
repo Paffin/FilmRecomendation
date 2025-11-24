@@ -81,14 +81,12 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException('User not found');
 
-    await this.prisma.refreshToken.update({
-      where: { tokenHash: hashed },
-      data: { revokedAt: new Date() },
-    });
-
     await this.prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } });
 
-    return this.issueSession(user, meta);
+    // Выпускаем новый набор токенов, старый оставляем валидным до истечения, но ограничиваем общее число активных
+    const session = await this.issueSession(user, meta);
+    await this.trimActiveTokens(user.id, 5);
+    return session;
   }
 
   async logout(refreshToken: string | undefined) {
@@ -98,13 +96,28 @@ export class AuthService {
       where: { tokenHash: hashed },
       data: { revokedAt: new Date() },
     });
+    // при logout можно подчистить старые, но не удаляем все активные, чтобы не трогать параллельные сессии
+    await this.trimActiveTokensByUserFromCookie(hashed);
     return { ok: true };
   }
 
   issueCookiePayload(token: string, expiresAt: Date) {
-    const secure = this.config.get<boolean>('cookies.secure');
-    const domain = this.config.get<string | undefined>('cookies.domain');
-    const sameSite = (this.config.get<string>('cookies.sameSite') as any) ?? 'lax';
+    const configuredSecure = this.config.get<boolean>('cookies.secure');
+    const configuredDomain = this.config.get<string | undefined>('cookies.domain');
+    // Browsers reject `Domain=localhost` (and often `127.0.0.1`), which breaks dev refresh cookies.
+    // For local/dev we omit the domain so the cookie is host-only and works on localhost:PORT.
+    const domain =
+      configuredDomain &&
+      configuredDomain !== 'localhost' &&
+      configuredDomain !== '127.0.0.1' &&
+      configuredDomain.trim() !== ''
+        ? configuredDomain
+        : undefined;
+    const frontendUrl = this.config.get<string>('frontendUrl') ?? '';
+    const isHttpsFrontend = frontendUrl.startsWith('https://');
+    const secure = configuredSecure || isHttpsFrontend;
+    // Если secure/https — используем None для кросс-доменных сценариев; иначе уходим в lax
+    const sameSite = (secure ? 'none' : (this.config.get<string>('cookies.sameSite') as any)) ?? 'lax';
 
     return {
       name: 'refresh_token',
@@ -156,14 +169,15 @@ export class AuthService {
   private generateTokens(userId: string, email: string) {
     const accessExpiresIn = this.config.get<string>('jwt.accessExpiresIn') ?? '15m';
     const refreshExpiresIn = this.config.get<string>('jwt.refreshExpiresIn') ?? '7d';
+    const refreshJti = crypto.randomUUID();
 
     const accessToken = this.jwt.sign(
-      { sub: userId, email },
+      { sub: userId, email, jti: crypto.randomUUID() },
       { secret: this.config.get<string>('jwt.accessSecret'), expiresIn: accessExpiresIn },
     );
 
     const refreshToken = this.jwt.sign(
-      { sub: userId, email },
+      { sub: userId, email, jti: refreshJti },
       { secret: this.config.get<string>('jwt.refreshSecret'), expiresIn: refreshExpiresIn },
     );
 
@@ -177,6 +191,25 @@ export class AuthService {
 
   private hashToken(token: string) {
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private async trimActiveTokens(userId: string, maxCount: number) {
+    const tokens = await this.prisma.refreshToken.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (tokens.length <= maxCount) return;
+    const toDelete = tokens.slice(maxCount);
+    await this.prisma.refreshToken.updateMany({
+      where: { id: { in: toDelete.map((t) => t.id) } },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  private async trimActiveTokensByUserFromCookie(currentHash: string) {
+    const token = await this.prisma.refreshToken.findUnique({ where: { tokenHash: currentHash } });
+    if (!token) return;
+    await this.trimActiveTokens(token.userId, 5);
   }
 
   private sanitize(user: { passwordHash: string; [key: string]: any }) {
