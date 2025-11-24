@@ -7,6 +7,9 @@ export interface RecommendationQuery {
   mindset?: string;
   company?: string;
   timeAvailable?: string;
+  noveltyBias?: 'safe' | 'mix' | 'surprise';
+  pace?: 'calm' | 'balanced' | 'dynamic';
+  freshness?: 'trending' | 'classic' | 'any';
 }
 
 export async function fetchRecommendations(params: RecommendationQuery = {}) {

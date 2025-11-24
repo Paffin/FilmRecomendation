@@ -16,6 +16,9 @@ export class RecommendationsService {
       mindset: query.mindset,
       company: query.company,
       timeAvailable: query.timeAvailable,
+      noveltyBias: query.noveltyBias,
+      pace: query.pace,
+      freshness: query.freshness,
     };
 
     const session = await this.prisma.recommendationSession.create({
@@ -25,7 +28,8 @@ export class RecommendationsService {
       },
     });
 
-    const recs = await this.engine.recommend(userId, limit, context);
+    const recsRaw = await this.engine.recommend(userId, limit, context);
+    const recs = recsRaw.filter((r, idx, arr) => arr.findIndex((i) => i.title.id === r.title.id) === idx);
 
     await this.prisma.$transaction(
       recs.map((rec, idx) =>

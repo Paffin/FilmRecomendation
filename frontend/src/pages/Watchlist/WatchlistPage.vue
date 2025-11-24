@@ -1,17 +1,22 @@
 <template>
   <div class="surface-card">
     <div class="header">
-      <h2 class="section-title">Список к просмотру</h2>
+      <h2 class="section-title">{{ t('watchlist.title') }}</h2>
       <Dropdown v-model="status" :options="statuses" optionLabel="label" optionValue="value" showClear />
     </div>
     <div v-if="loading" class="card-grid">
       <Skeleton v-for="i in 4" :key="i" height="140px" borderRadius="14px" />
     </div>
     <div v-else class="card-grid">
-      <div v-if="items.length === 0" class="empty">Нет тайтлов в списке. Лайкните рекомендации, чтобы добавить.</div>
+      <div v-if="items.length === 0" class="empty">{{ t('watchlist.empty') }}</div>
       <div v-else v-for="item in items" :key="item.id" class="surface-card watch-item">
-        <RouterLink class="title" :to="`/title/${item.title.id}`">{{ item.title.russianTitle || item.title.originalTitle }}</RouterLink>
-        <div class="meta">{{ buildMeta(item) }}</div>
+        <div class="watch-row">
+          <div>
+            <RouterLink class="title" :to="`/title/${item.title.id}`">{{ item.title.russianTitle || item.title.originalTitle }}</RouterLink>
+            <div class="meta">{{ buildMeta(item) }}</div>
+          </div>
+          <Button label="Подробнее" icon="pi pi-angle-right" text @click="openDetails(item.title.id)" />
+        </div>
         <Dropdown
           v-model="item.status"
           :options="statuses"
@@ -25,22 +30,26 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import Dropdown, { type DropdownChangeEvent } from 'primevue/dropdown';
 import Skeleton from 'primevue/skeleton';
 import { useToast } from 'primevue/usetoast';
+import Button from 'primevue/button';
+import { useI18n } from 'vue-i18n';
 import type { TitleStatus, UserTitleStateResponse } from '../../api/types';
 import { listUserTitles, updateUserTitle } from '../../api/userTitles';
-
-const statuses = [
-  { label: 'Запланировано', value: 'planned' },
-  { label: 'Смотрю', value: 'watching' },
-  { label: 'Просмотрено', value: 'watched' },
-  { label: 'Бросил', value: 'dropped' },
-];
+import { useRouter } from 'vue-router';
 
 const toast = useToast();
+const router = useRouter();
+const { t } = useI18n();
+const statuses = computed(() => [
+  { label: t('watchlist.status.planned'), value: 'planned' },
+  { label: t('watchlist.status.watching'), value: 'watching' },
+  { label: t('watchlist.status.watched'), value: 'watched' },
+  { label: t('watchlist.status.dropped'), value: 'dropped' },
+]);
 const status = ref<TitleStatus | null>('planned');
 const items = ref<UserTitleStateResponse[]>([]);
 const loading = ref(false);
@@ -71,6 +80,8 @@ const buildMeta = (item: UserTitleStateResponse) => {
   const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
   return [year, item.title.genres?.slice(0, 2).join(', ')].filter(Boolean).join(' · ');
 };
+
+const openDetails = (id: string) => router.push(`/title/${id}`);
 
 watch(status, () => load());
 onMounted(load);

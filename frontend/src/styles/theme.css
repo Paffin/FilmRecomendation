@@ -1,11 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 :root {
   --text-color: #e8ecf5;
   --text-secondary: #9fa8c4;
-  --surface: #11131a;
-  --surface-2: #171a22;
+  --surface: #0f1118;
+  --surface-2: #161927;
   --surface-border: rgba(255, 255, 255, 0.08);
-  --accent: #8ab4ff;
+  --accent: #8fdcff;
+  --accent-2: #ff7ac3;
   --danger: #f87171;
+  --glow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -14,13 +18,23 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #0c0d11;
+  font-family: 'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: radial-gradient(circle at 15% 20%, rgba(143, 220, 255, 0.08), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(255, 122, 195, 0.08), transparent 30%),
+    #0b0d14;
   color: var(--text-color);
+  min-height: 100vh;
 }
 
 .p-button {
   font-weight: 600;
+  border-radius: 12px;
+}
+
+.p-dropdown,
+.p-inputtext,
+.p-slider {
+  border-radius: 10px;
 }
 
 .card-grid {
@@ -34,11 +48,36 @@ body {
   border: 1px solid var(--surface-border);
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--glow);
+  position: relative;
+  overflow: hidden;
+}
+
+.surface-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(143, 220, 255, 0.04), rgba(255, 122, 195, 0.04));
+  pointer-events: none;
 }
 
 .section-title {
   font-size: 20px;
   margin: 0 0 12px;
   font-weight: 700;
+}
+
+.p-skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.05));
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }

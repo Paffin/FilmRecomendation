@@ -24,4 +24,16 @@ export class RecommendationQueryDto {
   @IsOptional()
   @IsString()
   timeAvailable?: string;
+
+  @IsOptional()
+  @IsString()
+  noveltyBias?: 'safe' | 'mix' | 'surprise';
+
+  @IsOptional()
+  @IsString()
+  pace?: 'calm' | 'balanced' | 'dynamic';
+
+  @IsOptional()
+  @IsString()
+  freshness?: 'trending' | 'classic' | 'any';
 }

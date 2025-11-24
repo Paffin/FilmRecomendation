@@ -1,23 +1,29 @@
 <template>
   <div class="rec-card surface-card">
     <div class="poster" :style="posterStyle">
-      <span v-if="!poster" class="placeholder">Нет постера</span>
+      <span v-if="!poster" class="placeholder">{{ t('recommendations.noPoster') }}</span>
+      <div class="badge" v-else>{{ t('recommendations.cardBadge') }}</div>
     </div>
     <div class="content">
-      <div class="title">{{ title }}</div>
-      <div class="meta" v-if="meta">{{ meta }}</div>
+      <div class="title-row">
+        <div class="title">{{ title }}</div>
+        <div class="meta" v-if="meta">{{ meta }}</div>
+        <div class="meta subtle" v-if="secondaryMeta">{{ secondaryMeta }}</div>
+      </div>
       <div class="chips" v-if="tags?.length">
         <Tag v-for="tag in tags" :key="tag" :value="tag" severity="info" />
       </div>
       <div class="why" v-if="explanation?.length">
-        <div class="why-title">Почему в рекомендациях</div>
+        <div class="why-title">{{ t('recommendations.why') }}</div>
         <ul>
           <li v-for="reason in explanation" :key="reason">{{ reason }}</li>
         </ul>
       </div>
       <div class="actions">
-        <Button icon="pi pi-thumbs-up" label="Нравится" :disabled="busy" @click="$emit('like')" />
-        <Button icon="pi pi-times" label="Не подходит" :disabled="busy" severity="danger" outlined @click="$emit('dislike')" />
+        <Button icon="pi pi-eye" :label="t('recommendations.more')" text @click="$emit('details')" />
+        <span class="spacer" />
+        <Button icon="pi pi-thumbs-up" :label="t('recommendations.like')" :disabled="busy" @click="$emit('like')" />
+        <Button icon="pi pi-times" :label="t('recommendations.dislike')" :disabled="busy" severity="danger" outlined @click="$emit('dislike')" />
       </div>
     </div>
   </div>
@@ -27,10 +33,12 @@
 import { computed } from 'vue';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
+import { useI18n } from 'vue-i18n';
 
 interface Props {
   title: string;
   meta?: string;
+  secondaryMeta?: string;
   tags?: string[];
   explanation?: string[];
   poster?: string | null;
@@ -38,6 +46,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const { t } = useI18n();
 
 const posterStyle = computed(() =>
   props.poster
@@ -49,18 +58,34 @@ const posterStyle = computed(() =>
 <style scoped>
 .rec-card {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 160px 1fr;
   gap: 16px;
+  position: relative;
+  overflow: hidden;
 }
 
 .poster {
   width: 100%;
-  height: 200px;
-  border-radius: 12px;
+  height: 220px;
+  border-radius: 14px;
   background: linear-gradient(135deg, rgba(138, 180, 255, 0.35), rgba(255, 73, 167, 0.25));
   display: grid;
   place-items: center;
   color: var(--text-secondary);
+  position: relative;
+}
+
+.badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .content {
@@ -69,13 +94,24 @@ const posterStyle = computed(() =>
   gap: 10px;
 }
 
+.title-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .title {
   font-weight: 700;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .meta {
   color: var(--text-secondary);
+}
+
+.meta.subtle {
+  opacity: 0.8;
+  font-size: 13px;
 }
 
 .chips {
@@ -89,9 +125,20 @@ const posterStyle = computed(() =>
   margin-bottom: 6px;
 }
 
+.why ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
 .actions {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.spacer {
+  flex: 1;
 }
 
 .placeholder {
@@ -106,7 +153,7 @@ const posterStyle = computed(() =>
     grid-template-columns: 1fr;
   }
   .poster {
-    height: 180px;
+    height: 190px;
   }
 }
 </style>

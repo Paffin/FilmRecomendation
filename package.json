@@ -9,6 +9,14 @@
   "scripts": {
     "lint": "npm run lint --workspaces",
     "format": "npm run format --workspaces",
-    "test": "npm run test --workspaces"
+    "test": "npm run test --workspaces",
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,vue,json,md}": "npm run lint --workspaces -- --fix"
+  },
+  "devDependencies": {
+    "husky": "^9.1.4",
+    "lint-staged": "^15.2.10"
   }
 }

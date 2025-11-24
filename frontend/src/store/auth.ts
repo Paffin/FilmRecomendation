@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import api, { setAccessToken } from '../api/client';
+import api, { registerUnauthorizedHandler, setAccessToken } from '../api/client';
 
 interface User {
   id: string;
@@ -11,35 +11,45 @@ interface User {
 interface AuthState {
   user: User | null;
   accessToken: string | null;
-  refreshToken: string | null;
   loading: boolean;
   initialized: boolean;
 }
 
-const persistKey = 'kinovkus-auth';
+const persistKey = 'kinovkus-user';
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     user: null,
     accessToken: null,
-    refreshToken: null,
     loading: false,
     initialized: false,
   }),
   actions: {
-    init() {
+    hydrateUser() {
+      const raw = sessionStorage.getItem(persistKey);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        this.user = parsed.user;
+      } catch {
+        sessionStorage.removeItem(persistKey);
+      }
+    },
+    persistUser() {
+      if (this.user) {
+        sessionStorage.setItem(persistKey, JSON.stringify({ user: this.user }));
+      } else {
+        sessionStorage.removeItem(persistKey);
+      }
+    },
+    async bootstrap() {
       if (this.initialized) return;
-      const raw = localStorage.getItem(persistKey);
-      if (raw) {
-        try {
-          const data = JSON.parse(raw);
-          this.user = data.user;
-          this.accessToken = data.accessToken;
-          this.refreshToken = data.refreshToken;
-          setAccessToken(this.accessToken);
-        } catch {
-          localStorage.removeItem(persistKey);
-        }
+      this.hydrateUser();
+      registerUnauthorizedHandler(async () => this.refreshWithCookie(true));
+      try {
+        await this.refreshWithCookie(true);
+      } catch {
+        // silent fail — user is not logged in
       }
       this.initialized = true;
     },
@@ -47,7 +57,7 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true;
       try {
         const { data } = await api.post('/auth/register', payload);
-        this.setSession(data.user, data.tokens.accessToken, data.tokens.refreshToken);
+        this.setSession(data.user, data.tokens.accessToken);
       } finally {
         this.loading = false;
       }
@@ -56,49 +66,55 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true;
       try {
         const { data } = await api.post('/auth/login', payload);
-        this.setSession(data.user, data.tokens.accessToken, data.tokens.refreshToken);
+        this.setSession(data.user, data.tokens.accessToken);
       } finally {
         this.loading = false;
       }
     },
-    async refresh() {
-      if (!this.refreshToken) return;
-      const { data } = await api.post('/auth/refresh', { refreshToken: this.refreshToken });
-      this.setSession(data.user, data.tokens.accessToken, data.tokens.refreshToken);
+    async refreshWithCookie(silent = false): Promise<string | null> {
+      try {
+        const { data } = await api.post('/auth/refresh');
+        this.setSession(data.user, data.tokens.accessToken);
+        return data.tokens.accessToken ?? null;
+      } catch (e) {
+        if (!silent) throw e;
+        this.logout(false);
+        return null;
+      }
     },
     async fetchMe() {
       if (!this.accessToken) return;
       try {
         const { data } = await api.get('/me');
         this.user = data;
-        this.persist();
+        this.persistUser();
       } catch (e) {
         this.logout();
         throw e;
       }
     },
-    logout() {
+    async logout(callApi = true) {
+      if (callApi) {
+        try {
+          await api.post('/auth/logout');
+        } catch {
+          // ignore
+        }
+      }
       this.user = null;
       this.accessToken = null;
-      this.refreshToken = null;
-      localStorage.removeItem(persistKey);
+      sessionStorage.removeItem(persistKey);
       setAccessToken(null);
     },
-    setSession(user: User, accessToken: string, refreshToken: string) {
+    setSession(user: User, accessToken: string) {
       this.user = user;
       this.accessToken = accessToken;
-      this.refreshToken = refreshToken;
       setAccessToken(accessToken);
-      this.persist();
-    },
-    persist() {
-      localStorage.setItem(
-        persistKey,
-        JSON.stringify({ user: this.user, accessToken: this.accessToken, refreshToken: this.refreshToken }),
-      );
+      this.persistUser();
     },
   },
   getters: {
     isAuthenticated: (state) => Boolean(state.accessToken && state.user),
+    isOnboarded: (state) => Boolean(state.user?.onboardingCompleted),
   },
 });

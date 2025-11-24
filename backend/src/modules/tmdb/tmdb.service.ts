@@ -38,7 +38,7 @@ export class TmdbService {
     return this.cachedGet(
       `details:${mediaType}:${tmdbId}`,
       `/${mediaType}/${tmdbId}`,
-      { language: this.language, append_to_response: 'external_ids,credits,similar' },
+      { language: this.language, append_to_response: 'external_ids,credits,similar,keywords' },
       30 * 60 * 1000,
     );
   }

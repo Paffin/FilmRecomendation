@@ -1,31 +1,31 @@
 <template>
   <div class="grid">
     <div class="surface-card kpi">
-      <h2 class="section-title">Профиль и прогресс</h2>
+      <h2 class="section-title">{{ t('profile.title') }}</h2>
       <div class="stats" v-if="!loading && overview">
         <div class="stat">
           <div class="value">{{ overview.watchedCount }}</div>
-          <div class="label">просмотрено</div>
+          <div class="label">{{ t('profile.stats.watched') }}</div>
         </div>
         <div class="stat">
           <div class="value">{{ overview.likedCount }}</div>
-          <div class="label">лайков</div>
+          <div class="label">{{ t('profile.stats.likes') }}</div>
         </div>
         <div class="stat">
           <div class="value">{{ overview.plannedCount }}</div>
-          <div class="label">в списке</div>
+          <div class="label">{{ t('profile.stats.planned') }}</div>
         </div>
         <div class="stat">
           <div class="value">{{ overview.totalRuntimeHours }} ч</div>
-          <div class="label">суммарно</div>
+          <div class="label">{{ t('profile.stats.runtime') }}</div>
         </div>
         <div class="stat">
           <div class="value">{{ overview.topGenre || '—' }}</div>
-          <div class="label">любимый жанр</div>
+          <div class="label">{{ t('profile.stats.favoriteGenre') }}</div>
         </div>
         <div class="stat">
           <div class="value">{{ overview.averageRating ? overview.averageRating : '—' }}</div>
-          <div class="label">средняя оценка</div>
+          <div class="label">{{ t('profile.stats.avgRating') }}</div>
         </div>
       </div>
       <div class="stats" v-else>
@@ -34,7 +34,7 @@
     </div>
 
     <div class="surface-card">
-      <h3 class="section-title">Карта вкуса</h3>
+      <h3 class="section-title">{{ t('profile.tasteMap') }}</h3>
       <div v-if="loading" class="chart-skeleton">
         <Skeleton height="280px" borderRadius="14px" />
       </div>
@@ -61,7 +61,7 @@
     </div>
 
     <div class="surface-card">
-      <h3 class="section-title">Антисписок</h3>
+      <h3 class="section-title">{{ t('profile.antiList') }}</h3>
       <div v-if="loading" class="chart-skeleton"><Skeleton height="120px" borderRadius="12px" /></div>
       <ul v-else-if="taste && taste.antiList.length" class="anti">
         <li v-for="item in taste.antiList" :key="item.id">{{ item.title }}</li>
@@ -91,6 +91,7 @@ import {
 import type { ChartOptions } from 'chart.js';
 import { getOverview, getTasteMap } from '../../api/analytics';
 import type { OverviewResponse, TasteMapResponse } from '../../api/analytics';
+import { useI18n } from 'vue-i18n';
 
 ChartJS.register(
   RadialLinearScale,
@@ -108,6 +109,7 @@ ChartJS.register(
 const overview = ref<OverviewResponse | null>(null);
 const taste = ref<TasteMapResponse | null>(null);
 const loading = ref(true);
+const { t } = useI18n();
 
 onMounted(async () => {
   try {

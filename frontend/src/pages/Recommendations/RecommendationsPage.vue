@@ -1,49 +1,64 @@
 <template>
-  <div class="surface-card">
+  <div class="surface-card rec-shell">
     <div class="top">
       <div>
-        <h2 class="section-title">Сегодня хочу…</h2>
+        <p class="eyebrow">{{ t('recommendations.modeTitle') }}</p>
+        <h2 class="section-title">{{ t('recommendations.todayWant') }}</h2>
         <div class="context-grid">
           <div>
-            <label>Настроение</label>
+            <label>{{ t('recommendations.mood') }}</label>
             <Slider v-model="mood" :min="0" :max="100" :step="1" />
             <small>{{ moodLabel }}</small>
           </div>
           <div>
-            <label>Хочу думать</label>
+            <label>{{ t('recommendations.mindset') }}</label>
             <Slider v-model="mindset" :min="0" :max="100" />
             <small>{{ mindsetLabel }}</small>
           </div>
           <div>
-            <label>Компания</label>
+            <label>{{ t('recommendations.company') }}</label>
             <Dropdown v-model="company" :options="companies" optionLabel="label" optionValue="value" />
           </div>
           <div>
-            <label>Время есть</label>
+            <label>{{ t('recommendations.time') }}</label>
             <Dropdown v-model="timeAvailable" :options="times" optionLabel="label" optionValue="value" />
+          </div>
+          <div>
+            <label>{{ t('recommendations.novelty') }}</label>
+            <Dropdown v-model="noveltyBias" :options="noveltyOptions" optionLabel="label" optionValue="value" />
+          </div>
+          <div>
+            <label>{{ t('recommendations.pace') }}</label>
+            <Dropdown v-model="pace" :options="paceOptions" optionLabel="label" optionValue="value" />
+          </div>
+          <div>
+            <label>{{ t('recommendations.freshness') }}</label>
+            <Dropdown v-model="freshness" :options="freshnessOptions" optionLabel="label" optionValue="value" />
           </div>
         </div>
       </div>
-      <Button label="Обновить" icon="pi pi-refresh" @click="load" :loading="loading" />
+      <Button :label="t('common.refresh')" icon="pi pi-refresh" severity="secondary" @click="load" :loading="loading" />
     </div>
 
     <div class="list" v-if="loading">
-      <Skeleton v-for="n in 5" :key="n" height="220px" borderRadius="16px" />
+      <Skeleton v-for="n in 5" :key="n" height="240px" borderRadius="16px" />
     </div>
     <div class="list" v-else>
-      <div v-if="recommendations.length === 0" class="empty">Пока нет рекомендаций. Попробуйте обновить.</div>
+      <div v-if="recommendations.length === 0" class="empty">{{ t('recommendations.empty') }}</div>
       <RecommendationCard
         v-else
         v-for="item in recommendations"
         :key="item.id"
         :title="item.displayTitle"
         :meta="item.meta"
+        :secondary-meta="item.secondaryMeta"
         :tags="item.tags"
         :poster="item.poster"
         :explanation="item.explanation"
         :busy="actionLoading === item.id"
         @like="like(item)"
         @dislike="dislike(item)"
+        @details="openDetails(item)"
       />
     </div>
   </div>
@@ -55,11 +70,12 @@ import Button from 'primevue/button';
 import Slider from 'primevue/slider';
 import Dropdown from 'primevue/dropdown';
 import Skeleton from 'primevue/skeleton';
+import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
 import { fetchRecommendations, sendRecommendationFeedback } from '../../api/recommendations';
-import { createUserTitle } from '../../api/userTitles';
 import type { ApiTitle, MediaType } from '../../api/types';
+import { useI18n } from 'vue-i18n';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
@@ -69,6 +85,7 @@ interface RecCard {
   mediaType: MediaType;
   displayTitle: string;
   meta: string;
+   secondaryMeta: string;
   tags: string[];
   poster: string | null;
   explanation: string[];
@@ -79,10 +96,15 @@ const sessionId = ref<string | null>(null);
 const loading = ref(false);
 const actionLoading = ref<string | null>(null);
 const toast = useToast();
+const router = useRouter();
+const { t } = useI18n();
 const mood = ref(40);
 const mindset = ref(50);
 const company = ref('solo');
 const timeAvailable = ref('90');
+const noveltyBias = ref<'safe' | 'mix' | 'surprise'>('mix');
+const pace = ref<'calm' | 'balanced' | 'dynamic'>('balanced');
+const freshness = ref<'trending' | 'classic' | 'any'>('trending');
 
 const companies = [
   { label: 'Один', value: 'solo' },
@@ -94,6 +116,21 @@ const times = [
   { label: '30–60 мин', value: '60' },
   { label: '1–2 часа', value: '90' },
   { label: '2+ часа', value: '120' },
+];
+const noveltyOptions = [
+  { label: 'Побольше знакомого', value: 'safe' },
+  { label: 'Сбалансировано', value: 'mix' },
+  { label: 'Сюрпризы', value: 'surprise' },
+];
+const paceOptions = [
+  { label: 'Спокойно', value: 'calm' },
+  { label: 'Сбалансировано', value: 'balanced' },
+  { label: 'Динамично', value: 'dynamic' },
+];
+const freshnessOptions = [
+  { label: 'Тренды', value: 'trending' },
+  { label: 'Классика', value: 'classic' },
+  { label: 'Любое', value: 'any' },
 ];
 
 const moodLabel = computed(() => (mood.value < 40 ? 'Лёгкое' : mood.value > 70 ? 'Тяжёлое' : 'Нейтральное'));
@@ -109,6 +146,9 @@ const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard =>
   if (year) metaParts.push(String(year));
   if (item.title.tmdbRating) metaParts.push(`TMDB ${item.title.tmdbRating.toFixed(1)}`);
   metaParts.push(item.title.mediaType === 'movie' ? 'Фильм' : item.title.mediaType === 'tv' ? 'Сериал' : 'Тайтл');
+  const secondary = [item.title.countries?.slice(0, 2).join(', '), item.title.runtime ? `${item.title.runtime} мин` : null]
+    .filter(Boolean)
+    .join(' · ');
 
   return {
     id: item.title.id,
@@ -116,6 +156,7 @@ const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard =>
     mediaType: item.title.mediaType,
     displayTitle: item.title.russianTitle || item.title.originalTitle,
     meta: metaParts.join(' · '),
+    secondaryMeta: secondary,
     tags: item.title.genres?.slice(0, 3) ?? [],
     poster: item.title.posterPath ? `${TMDB_IMAGE_BASE}${item.title.posterPath}` : null,
     explanation: item.explanation,
@@ -131,6 +172,9 @@ const load = async () => {
       mindset: mindsetParam.value,
       company: company.value,
       timeAvailable: timeAvailable.value,
+      noveltyBias: noveltyBias.value,
+      pace: pace.value,
+      freshness: freshness.value,
     });
     sessionId.value = data.sessionId;
     recommendations.value = data.items.map(mapToCard);
@@ -146,15 +190,8 @@ const like = async (item: RecCard) => {
   actionLoading.value = item.id;
   try {
     await sendRecommendationFeedback({ sessionId: sessionId.value, titleId: item.id, feedback: 'like' });
-    await createUserTitle({
-      tmdbId: item.tmdbId,
-      mediaType: item.mediaType,
-      status: 'planned',
-      source: 'recommendation',
-      liked: true,
-    });
     recommendations.value = recommendations.value.filter((r) => r.id !== item.id);
-    toast.add({ severity: 'success', summary: 'Добавлено', detail: 'Тайтл в списке к просмотру', life: 2500 });
+    toast.add({ severity: 'success', summary: t('notifications.added'), detail: t('notifications.savedToWatchlist'), life: 2500 });
     if (recommendations.value.length === 0) await load();
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Не удалось сохранить', detail: 'Попробуйте ещё раз', life: 4000 });
@@ -183,15 +220,25 @@ const dislike = async (item: RecCard) => {
   }
 };
 
+const openDetails = (item: RecCard) => {
+  router.push(`/title/${item.id}`);
+};
+
 onMounted(load);
 </script>
 
 <style scoped>
+.rec-shell {
+  background: linear-gradient(135deg, rgba(112, 68, 255, 0.06), rgba(34, 193, 195, 0.05));
+  border: 1px solid var(--surface-border);
+}
+
 .top {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .context-grid {
@@ -219,5 +266,13 @@ label {
 
 small {
   color: var(--text-secondary);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 6px;
 }
 </style>

@@ -18,7 +18,7 @@ const router = createRouter({
 
 router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore();
-  auth.init();
+  await auth.bootstrap();
 
   // lazy fetch user once we have token
   if (auth.accessToken && !auth.user && !auth.loading) {
@@ -35,6 +35,10 @@ router.beforeEach(async (to, _from, next) => {
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return next({ path: '/auth', query: { redirect: to.fullPath } });
+  }
+
+  if (to.meta.requiresAuth && auth.isAuthenticated && !auth.isOnboarded && to.path !== '/onboarding') {
+    return next('/onboarding');
   }
 
   return next();
