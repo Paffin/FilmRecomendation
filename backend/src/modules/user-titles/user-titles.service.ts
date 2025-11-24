@@ -25,7 +25,10 @@ export class UserTitlesService {
   }
 
   async findByTitle(userId: string, titleId: string) {
-    const state = await this.prisma.userTitleState.findUnique({ where: { userId_titleId: { userId, titleId } }, include: { title: true } });
+    const state = await this.prisma.userTitleState.findUnique({
+      where: { userId_titleId: { userId, titleId } },
+      include: { title: true },
+    });
     return state ?? null;
   }
 
@@ -56,7 +59,10 @@ export class UserTitlesService {
   }
 
   async update(userId: string, id: string, dto: UpdateUserTitleDto) {
-    const existing = await this.prisma.userTitleState.findUnique({ where: { id }, include: { title: true } });
+    const existing = await this.prisma.userTitleState.findUnique({
+      where: { id },
+      include: { title: true },
+    });
     if (!existing) throw new NotFoundException('User title state not found');
     if (existing.userId !== userId) throw new ForbiddenException();
 

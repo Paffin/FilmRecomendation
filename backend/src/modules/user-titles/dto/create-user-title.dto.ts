@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { MediaType, TitleStatus, TitleSource } from '@prisma/client';
 
 export class CreateUserTitleDto {

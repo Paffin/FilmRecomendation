@@ -13,7 +13,11 @@ export default () => ({
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES ?? '7d',
   },
   cors: {
-    allowedOrigins: (process.env.CORS_ALLOWED_ORIGINS ?? process.env.FRONTEND_URL ?? 'http://localhost:5173')
+    allowedOrigins: (
+      process.env.CORS_ALLOWED_ORIGINS ??
+      process.env.FRONTEND_URL ??
+      'http://localhost:5173'
+    )
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean),

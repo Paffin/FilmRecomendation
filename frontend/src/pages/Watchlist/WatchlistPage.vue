@@ -2,14 +2,14 @@
   <div class="surface-card">
     <div class="header">
       <h2 class="section-title">{{ t('watchlist.title') }}</h2>
-      <Dropdown v-model="status" :options="statuses" optionLabel="label" optionValue="value" showClear />
+      <Dropdown v-model="status" :options="statuses" option-label="label" option-value="value" show-clear />
     </div>
     <div v-if="loading" class="card-grid">
-      <Skeleton v-for="i in 4" :key="i" height="140px" borderRadius="14px" />
+      <Skeleton v-for="i in 4" :key="i" height="140px" border-radius="14px" />
     </div>
     <div v-else class="card-grid">
       <div v-if="items.length === 0" class="empty">{{ t('watchlist.empty') }}</div>
-      <div v-else v-for="item in items" :key="item.id" class="surface-card watch-item">
+      <div v-for="item in items" v-else :key="item.id" class="surface-card watch-item">
         <div class="watch-row">
           <div>
             <RouterLink class="title" :to="`/title/${item.title.id}`">{{ item.title.russianTitle || item.title.originalTitle }}</RouterLink>
@@ -20,8 +20,8 @@
         <Dropdown
           v-model="item.status"
           :options="statuses"
-          optionLabel="label"
-          optionValue="value"
+          option-label="label"
+          option-value="value"
           @change="(e: DropdownChangeEvent) => changeStatus(item, e.value as TitleStatus)"
         />
       </div>

@@ -10,21 +10,33 @@ export class AuthController {
   constructor(private readonly service: AuthService) {}
 
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const session = await this.service.register(dto, this.meta(req));
     this.setCookie(res, session.refreshToken, session.refreshExpiresAt);
     return { user: session.user, tokens: { accessToken: session.accessToken } };
   }
 
   @Post('login')
-  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const session = await this.service.login(dto, this.meta(req));
     this.setCookie(res, session.refreshToken, session.refreshExpiresAt);
     return { user: session.user, tokens: { accessToken: session.accessToken } };
   }
 
   @Post('refresh')
-  async refresh(@Body() dto: RefreshDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const token = dto.refreshToken ?? (req.cookies ? req.cookies['refresh_token'] : undefined);
     const session = await this.service.refresh(token, this.meta(req));
     this.setCookie(res, session.refreshToken, session.refreshExpiresAt);

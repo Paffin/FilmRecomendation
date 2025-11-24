@@ -2,18 +2,18 @@
   <div class="rec-card surface-card">
     <div class="poster" :style="posterStyle">
       <span v-if="!poster" class="placeholder">{{ t('recommendations.noPoster') }}</span>
-      <div class="badge" v-else>{{ t('recommendations.cardBadge') }}</div>
+      <div v-else class="badge">{{ t('recommendations.cardBadge') }}</div>
     </div>
     <div class="content">
       <div class="title-row">
         <div class="title">{{ title }}</div>
-        <div class="meta" v-if="meta">{{ meta }}</div>
-        <div class="meta subtle" v-if="secondaryMeta">{{ secondaryMeta }}</div>
+        <div v-if="meta" class="meta">{{ meta }}</div>
+        <div v-if="secondaryMeta" class="meta subtle">{{ secondaryMeta }}</div>
       </div>
-      <div class="chips" v-if="tags?.length">
+      <div v-if="tags?.length" class="chips">
         <Tag v-for="tag in tags" :key="tag" :value="tag" severity="info" />
       </div>
-      <div class="why" v-if="explanation?.length">
+      <div v-if="explanation?.length" class="why">
         <div class="why-title">{{ t('recommendations.why') }}</div>
         <ul>
           <li v-for="reason in explanation" :key="reason">{{ reason }}</li>

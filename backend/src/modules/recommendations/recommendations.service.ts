@@ -7,7 +7,10 @@ import { FeedbackContext, TitleStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class RecommendationsService {
-  constructor(private readonly prisma: PrismaService, private readonly engine: RecommendationEngine) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly engine: RecommendationEngine,
+  ) {}
 
   async getRecommendations(userId: string, query: RecommendationQueryDto) {
     const limit = query.limit ?? 5;
@@ -29,7 +32,9 @@ export class RecommendationsService {
     });
 
     const recsRaw = await this.engine.recommend(userId, limit, context);
-    const recs = recsRaw.filter((r, idx, arr) => arr.findIndex((i) => i.title.id === r.title.id) === idx);
+    const recs = recsRaw.filter(
+      (r, idx, arr) => arr.findIndex((i) => i.title.id === r.title.id) === idx,
+    );
 
     await this.prisma.$transaction(
       recs.map((rec, idx) =>
@@ -54,7 +59,9 @@ export class RecommendationsService {
   async handleFeedback(userId: string, dto: RecommendationFeedbackDto) {
     // if titleId refers to Title rather than item ID, adjust search
     const title = await this.prisma.title.findUnique({ where: { id: dto.titleId } });
-    const session = await this.prisma.recommendationSession.findUnique({ where: { id: dto.sessionId } });
+    const session = await this.prisma.recommendationSession.findUnique({
+      where: { id: dto.sessionId },
+    });
     if (!session || !title) throw new NotFoundException('Session or title not found');
 
     await this.prisma.feedbackEvent.create({
@@ -105,7 +112,13 @@ export class RecommendationsService {
             signals: replacement.signals,
           },
         });
-        return { replacement: { title: replacement.title, explanation: replacement.explanation, itemId: created.id } };
+        return {
+          replacement: {
+            title: replacement.title,
+            explanation: replacement.explanation,
+            itemId: created.id,
+          },
+        };
       }
     }
 

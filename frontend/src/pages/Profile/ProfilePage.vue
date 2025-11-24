@@ -2,7 +2,7 @@
   <div class="grid">
     <div class="surface-card kpi">
       <h2 class="section-title">{{ t('profile.title') }}</h2>
-      <div class="stats" v-if="!loading && overview">
+      <div v-if="!loading && overview" class="stats">
         <div class="stat">
           <div class="value">{{ overview.watchedCount }}</div>
           <div class="label">{{ t('profile.stats.watched') }}</div>
@@ -28,15 +28,15 @@
           <div class="label">{{ t('profile.stats.avgRating') }}</div>
         </div>
       </div>
-      <div class="stats" v-else>
-        <Skeleton height="48px" borderRadius="14px" v-for="i in 6" :key="i" />
+      <div v-else class="stats">
+        <Skeleton v-for="i in 6" :key="i" height="48px" border-radius="14px" />
       </div>
     </div>
 
     <div class="surface-card">
       <h3 class="section-title">{{ t('profile.tasteMap') }}</h3>
       <div v-if="loading" class="chart-skeleton">
-        <Skeleton height="280px" borderRadius="14px" />
+        <Skeleton height="280px" border-radius="14px" />
       </div>
       <Radar
         v-else-if="taste"
@@ -48,21 +48,21 @@
 
     <div class="surface-card">
       <h3 class="section-title">Жанры</h3>
-      <div v-if="loading" class="chart-skeleton"><Skeleton height="220px" borderRadius="14px" /></div>
+      <div v-if="loading" class="chart-skeleton"><Skeleton height="220px" border-radius="14px" /></div>
       <Bar v-else-if="taste && genreChartData.labels.length" :data="genreChartData" :options="barOptions" />
       <div v-else class="empty">Пока нет статистики</div>
     </div>
 
     <div class="surface-card">
       <h3 class="section-title">Страны</h3>
-      <div v-if="loading" class="chart-skeleton"><Skeleton height="220px" borderRadius="14px" /></div>
+      <div v-if="loading" class="chart-skeleton"><Skeleton height="220px" border-radius="14px" /></div>
       <Doughnut v-else-if="taste && countryChartData.labels.length" :data="countryChartData" :options="doughnutOptions" />
       <div v-else class="empty">Недостаточно данных</div>
     </div>
 
     <div class="surface-card">
       <h3 class="section-title">{{ t('profile.antiList') }}</h3>
-      <div v-if="loading" class="chart-skeleton"><Skeleton height="120px" borderRadius="12px" /></div>
+      <div v-if="loading" class="chart-skeleton"><Skeleton height="120px" border-radius="12px" /></div>
       <ul v-else-if="taste && taste.antiList.length" class="anti">
         <li v-for="item in taste.antiList" :key="item.id">{{ item.title }}</li>
       </ul>

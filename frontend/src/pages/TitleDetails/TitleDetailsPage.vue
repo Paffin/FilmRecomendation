@@ -1,5 +1,5 @@
 <template>
-  <div class="details surface-card" v-if="!loading && title">
+  <div v-if="!loading && title" class="details surface-card">
     <div class="hero">
       <div class="poster" :style="posterStyle">
         <span v-if="!title.posterPath" class="placeholder">Нет постера</span>
@@ -27,9 +27,9 @@
     <div>
       <h3 class="section-title">Похожие тайтлы</h3>
       <div class="card-grid">
-        <Skeleton v-if="similarLoading" v-for="n in 4" :key="n" height="200px" borderRadius="14px" />
+        <Skeleton v-for="n in 4" v-if="similarLoading" :key="n" height="200px" border-radius="14px" />
         <div v-else-if="similar.length === 0" class="empty">Нет похожих тайтлов</div>
-        <div v-else v-for="item in similar" :key="item.tmdbId" class="surface-card sim-card">
+        <div v-for="item in similar" v-else :key="item.tmdbId" class="surface-card sim-card">
           <div class="sim-poster" :style="item.poster ? { backgroundImage: `url(${item.poster})` } : undefined"></div>
           <div class="sim-info">
             <div class="title">{{ item.title }}</div>
@@ -41,7 +41,7 @@
     </div>
   </div>
   <div v-else class="surface-card">
-    <Skeleton height="320px" borderRadius="16px" />
+    <Skeleton height="320px" border-radius="16px" />
   </div>
 </template>
 

@@ -13,10 +13,13 @@
     "prepare": "husky install"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,vue,json,md}": "npm run lint --workspaces -- --fix"
+    "*.{ts,tsx,js,vue}": "npm run lint --workspaces -- --fix",
+    "*.md": "prettier --write"
   },
   "devDependencies": {
     "husky": "^9.1.4",
-    "lint-staged": "^15.2.10"
+    "lint-staged": "^15.2.10",
+    "@typescript-eslint/parser": "^8.13.0",
+    "@typescript-eslint/eslint-plugin": "^8.13.0"
   }
 }

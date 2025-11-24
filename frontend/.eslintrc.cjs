@@ -1,15 +1,12 @@
 module.exports = {
-  root: true,
-  env: { browser: true, es2021: true, node: true },
-  parser: 'vue-eslint-parser',
+  extends: ['../.eslintrc.cjs'],
   parserOptions: {
-    parser: '@typescript-eslint/parser',
-    project: './tsconfig.json',
+    project: null,
+    tsconfigRootDir: __dirname,
     extraFileExtensions: ['.vue'],
   },
-  plugins: ['@typescript-eslint', 'vue', 'prettier'],
-  extends: ['eslint:recommended', 'plugin:vue/vue3-recommended', 'plugin:@typescript-eslint/recommended', 'plugin:prettier/recommended'],
   rules: {
-    'vue/multi-word-component-names': 'off',
+    'vue/require-explicit-emits': 'off',
+    'vue/no-use-v-if-with-v-for': 'off',
   },
 };

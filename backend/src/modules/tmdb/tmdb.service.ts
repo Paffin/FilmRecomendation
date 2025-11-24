@@ -70,7 +70,12 @@ export class TmdbService {
     );
   }
 
-  private async cachedGet(cacheKey: string, path: string, params: Record<string, any>, ttl = this.defaultTtl) {
+  private async cachedGet(
+    cacheKey: string,
+    path: string,
+    params: Record<string, any>,
+    ttl = this.defaultTtl,
+  ) {
     const now = Date.now();
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expires > now) {
@@ -95,7 +100,12 @@ export class TmdbService {
     }
   }
 
-  private async requestWithRetry(path: string, params: Record<string, any>, attempt = 1, useBearer = true): Promise<any> {
+  private async requestWithRetry(
+    path: string,
+    params: Record<string, any>,
+    attempt = 1,
+    useBearer = true,
+  ): Promise<any> {
     try {
       const res = await this.http.get(path, {
         params: useBearer || !this.apiKey ? params : { ...params, api_key: this.apiKey },

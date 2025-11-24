@@ -2,20 +2,20 @@
   <div class="surface-card">
     <div class="header">
       <h2 class="section-title">История просмотра</h2>
-      <Dropdown v-model="period" :options="periods" optionLabel="label" optionValue="value" />
+      <Dropdown v-model="period" :options="periods" option-label="label" option-value="value" />
     </div>
-    <div class="list" v-if="loading">
-      <Skeleton v-for="i in 4" :key="i" height="90px" borderRadius="14px" />
+    <div v-if="loading" class="list">
+      <Skeleton v-for="i in 4" :key="i" height="90px" border-radius="14px" />
     </div>
-    <div class="list" v-else>
+    <div v-else class="list">
       <div v-if="filteredHistory.length === 0" class="empty">Пока нет просмотренных тайтлов за выбранный период.</div>
-      <div v-else v-for="item in filteredHistory" :key="item.id" class="surface-card row">
+      <div v-for="item in filteredHistory" v-else :key="item.id" class="surface-card row">
         <div>
           <div class="title">{{ item.title.russianTitle || item.title.originalTitle }}</div>
           <div class="meta">{{ formatDate(item.lastInteractionAt) }} · {{ meta(item) }}</div>
         </div>
         <div class="actions">
-          <Rating :modelValue="item.rating ?? 0" :cancel="false" @update:modelValue="(v) => changeRating(item, v)" />
+          <Rating :model-value="item.rating ?? 0" :cancel="false" @update:model-value="(v) => changeRating(item, v)" />
           <div class="buttons">
             <Button icon="pi pi-thumbs-up" text severity="success" :outlined="!item.liked" @click="() => like(item)" />
             <Button icon="pi pi-thumbs-down" text severity="danger" :outlined="!item.disliked" @click="() => dislike(item)" />

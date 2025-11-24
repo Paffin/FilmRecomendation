@@ -32,10 +32,7 @@ import { useAuthStore } from './store/auth';
 const auth = useAuthStore();
 const router = useRouter();
 
-auth.init();
-if (auth.accessToken && !auth.user) {
-  auth.fetchMe().catch(() => auth.logout());
-}
+auth.bootstrap();
 
 const logout = () => {
   auth.logout();

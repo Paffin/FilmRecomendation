@@ -11,7 +11,7 @@
           <label for="email">Email</label>
         </span>
         <span class="p-float-label">
-          <Password id="password" v-model="password" toggleMask :feedback="false" />
+          <Password id="password" v-model="password" toggle-mask :feedback="false" />
           <label for="password">Пароль</label>
         </span>
         <span v-if="mode === 'register'" class="p-float-label">

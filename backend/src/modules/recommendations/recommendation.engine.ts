@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
-import { MediaType, Title, UserTitleState } from '@prisma/client';
+import { MediaType, Prisma, Title, UserTitleState } from '@prisma/client';
 import { TitlesService } from '../titles/titles.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { weightVariants, WeightVariant } from './recommendation.config';
@@ -54,7 +54,11 @@ interface TasteProfileData {
   updatedAt: string;
 }
 
-interface UserTasteProfile extends Omit<TasteProfileData, 'likedTitleIds' | 'dislikedTitleIds' | 'seenTitleIds' | 'preferredTypes'> {
+interface UserTasteProfile
+  extends Omit<
+    TasteProfileData,
+    'likedTitleIds' | 'dislikedTitleIds' | 'seenTitleIds' | 'preferredTypes'
+  > {
   likedTitleIds: Set<string>;
   dislikedTitleIds: Set<string>;
   seenTitleIds: Set<string>;
@@ -72,7 +76,11 @@ export class RecommendationEngine {
     private readonly tmdb: TmdbService,
   ) {}
 
-  async recommend(userId: string, limit: number, context: RecommendationContext): Promise<RecommendationResultItem[]> {
+  async recommend(
+    userId: string,
+    limit: number,
+    context: RecommendationContext,
+  ): Promise<RecommendationResultItem[]> {
     const variant = this.pickVariant(userId);
     const weights = weightVariants[variant];
     const profile = await this.loadUserProfile(userId);
@@ -102,14 +110,14 @@ export class RecommendationEngine {
     const latestInteraction = states[0]?.lastInteractionAt ?? new Date(0);
     const cached = await this.prisma.userTasteProfile.findUnique({ where: { userId } });
     if (cached && cached.updatedAt >= latestInteraction) {
-      return this.deserializeProfile(cached.data as TasteProfileData);
+      return this.deserializeProfile(cached.data as unknown as TasteProfileData);
     }
 
     const computed = this.computeProfile(states);
     await this.prisma.userTasteProfile.upsert({
       where: { userId },
-      update: { data: computed },
-      create: { userId, data: computed },
+      update: { data: computed as unknown as Prisma.InputJsonValue },
+      create: { userId, data: computed as unknown as Prisma.InputJsonValue },
     });
 
     return this.deserializeProfile(computed);
@@ -146,8 +154,16 @@ export class RecommendationEngine {
         } else {
           genrePositive[g] = (genrePositive[g] ?? 0) + weight;
         }
-        moodVector.light += ['комедия', 'анимация', 'семейный'].some((k) => g.toLowerCase().includes(k)) ? weight * 0.4 : 0;
-        moodVector.heavy += ['драма', 'триллер', 'ужасы', 'криминал'].some((k) => g.toLowerCase().includes(k)) ? weight * 0.35 : 0;
+        moodVector.light += ['комедия', 'анимация', 'семейный'].some((k) =>
+          g.toLowerCase().includes(k),
+        )
+          ? weight * 0.4
+          : 0;
+        moodVector.heavy += ['драма', 'триллер', 'ужасы', 'криминал'].some((k) =>
+          g.toLowerCase().includes(k),
+        )
+          ? weight * 0.35
+          : 0;
       });
 
       title.countries?.forEach((c) => {
@@ -155,7 +171,8 @@ export class RecommendationEngine {
       });
 
       if (title.originalLanguage) {
-        languageWeights[title.originalLanguage] = (languageWeights[title.originalLanguage] ?? 0) + weight * 0.5;
+        languageWeights[title.originalLanguage] =
+          (languageWeights[title.originalLanguage] ?? 0) + weight * 0.5;
       }
 
       const year = title.releaseDate?.getFullYear();
@@ -172,7 +189,9 @@ export class RecommendationEngine {
       if (title.runtime) runtimes.push(title.runtime);
     });
 
-    const runtimeAvg = runtimes.length ? runtimes.reduce((a, b) => a + b, 0) / runtimes.length : null;
+    const runtimeAvg = runtimes.length
+      ? runtimes.reduce((a, b) => a + b, 0) / runtimes.length
+      : null;
     const runtimeMedian = runtimes.length
       ? runtimes.sort((a, b) => a - b)[Math.floor(runtimes.length / 2)]
       : null;
@@ -266,25 +285,31 @@ export class RecommendationEngine {
     const similarSeeds = await Promise.all(
       (profile.anchorTitles ?? []).slice(0, 4).map(async (anchor) => {
         const similar = await this.tmdb.similar(anchor.tmdbId, this.mapMediaType(anchor.mediaType));
-        return (similar?.results ?? []).slice(0, 12).map((r: any) => ({ tmdbId: r.id, mediaType: anchor.mediaType }));
+        return (similar?.results ?? [])
+          .slice(0, 12)
+          .map((r: any) => ({ tmdbId: r.id, mediaType: anchor.mediaType }));
       }),
     );
     similarSeeds.flat().forEach((s) => seeds.push(s));
 
     // тренды
-    const mediaTypes = profile.preferredTypes.size > 0 ? Array.from(profile.preferredTypes) : ['movie', 'tv'];
+    const mediaTypes =
+      profile.preferredTypes.size > 0 ? Array.from(profile.preferredTypes) : ['movie', 'tv'];
     const trendPromises = mediaTypes.map((mt) => this.tmdb.trending(this.mapMediaType(mt)));
     const trendResults = await Promise.all(trendPromises);
     trendResults.forEach((res, idx) => {
       (res?.results ?? []).slice(0, 15).forEach((r: any) => {
-        const resolvedType = this.normalizeMediaType(r.media_type) ?? (mediaTypes[idx] as MediaType);
+        const resolvedType =
+          this.normalizeMediaType(r.media_type) ?? (mediaTypes[idx] as MediaType);
         seeds.push({ tmdbId: r.id, mediaType: resolvedType });
       });
     });
 
     // популярное как fallback
     if (context.freshness === 'classic') {
-      const popular = await Promise.all(mediaTypes.map((mt) => this.tmdb.popular(this.mapMediaType(mt))));
+      const popular = await Promise.all(
+        mediaTypes.map((mt) => this.tmdb.popular(this.mapMediaType(mt))),
+      );
       popular.forEach((res, idx) => {
         (res?.results ?? []).slice(0, 12).forEach((r: any) => {
           seeds.push({ tmdbId: r.id, mediaType: mediaTypes[idx] as MediaType });
@@ -299,7 +324,9 @@ export class RecommendationEngine {
     });
 
     const resolvedSeeds = await this.resolveSeeds(seeds, excludeTitleIds, targetSize * 2);
-    const candidates = [...resolvedSeeds, ...local].filter((c, idx, arr) => arr.findIndex((t) => t.id === c.id) === idx);
+    const candidates = [...resolvedSeeds, ...local].filter(
+      (c, idx, arr) => arr.findIndex((t) => t.id === c.id) === idx,
+    );
 
     const limited = candidates.slice(0, targetSize);
     this.candidateCache.set(key, { titles: limited, expires: now + 5 * 60 * 1000 });
@@ -336,7 +363,7 @@ export class RecommendationEngine {
     title: Title,
     profile: UserTasteProfile,
     context: RecommendationContext,
-    weights: typeof weightVariants['A'],
+    weights: (typeof weightVariants)['A'],
   ) {
     const signals: Record<string, number> = {};
     const reasons: Set<string> = new Set();
@@ -385,8 +412,10 @@ export class RecommendationEngine {
       const freshness = Math.max(0, 1 - (currentYear - year) / 40);
       signals.freshness = freshness;
       const recency = profile.freshnessTilt * 0.6 + freshness * 0.4;
-      score += decadeWeight * weights.decade + recency * weights.recency + freshness * weights.freshness;
-      if (freshness > 0.7 && (context.freshness ?? 'any') !== 'classic') reasons.add('Свежая новинка последних лет');
+      score +=
+        decadeWeight * weights.decade + recency * weights.recency + freshness * weights.freshness;
+      if (freshness > 0.7 && (context.freshness ?? 'any') !== 'classic')
+        reasons.add('Свежая новинка последних лет');
       if (decadeWeight > 1) reasons.add(`Вы любите тайтлы ${decade}-х`);
     }
 
@@ -412,7 +441,8 @@ export class RecommendationEngine {
     const similarity = this.anchorSimilarity(title, profile.anchorTitles ?? []);
     signals.similarity = similarity.score;
     score += similarity.score * weights.similarity;
-    if (similarity.anchorLabel) reasons.add(`Похоже на «${similarity.anchorLabel}» из ваших любимых`);
+    if (similarity.anchorLabel)
+      reasons.add(`Похоже на «${similarity.anchorLabel}» из ваших любимых`);
 
     // runtime + контекст времени и темпа
     if (title.runtime) {
@@ -424,10 +454,20 @@ export class RecommendationEngine {
       score += runtimeScore * weights.runtime;
 
       const pace = context.pace ?? 'balanced';
-      const paceScore = pace === 'calm' ? (title.runtime > 110 ? 0.4 : 0.15) : pace === 'dynamic' ? (title.runtime < 115 ? 0.35 : 0.1) : 0.2;
+      const paceScore =
+        pace === 'calm'
+          ? title.runtime > 110
+            ? 0.4
+            : 0.15
+          : pace === 'dynamic'
+            ? title.runtime < 115
+              ? 0.35
+              : 0.1
+            : 0.2;
       signals.pace = paceScore;
       score += paceScore * weights.contextPace;
-      if (runtimeScore > 0.7 && context.timeAvailable) reasons.add('Укладывается во время, которое вы запланировали');
+      if (runtimeScore > 0.7 && context.timeAvailable)
+        reasons.add('Укладывается во время, которое вы запланировали');
     }
 
     // настроение, mindset, компания
@@ -459,12 +499,18 @@ export class RecommendationEngine {
     if (novelty > 0.3) reasons.add('Добавляем немного нового, чтобы расширить кругозор');
 
     // диверсификация
-    const diversity = Math.min(0.4, (title.genres?.length ?? 1) * 0.08 + profile.languageDiversity * 0.01);
+    const diversity = Math.min(
+      0.4,
+      (title.genres?.length ?? 1) * 0.08 + profile.languageDiversity * 0.01,
+    );
     signals.diversity = diversity;
     score += diversity * weights.diversity;
 
     // анти-лист
-    const antiHit = (title.genres ?? []).reduce((acc, g) => acc + (profile.genreNegative[g] ?? 0), 0);
+    const antiHit = (title.genres ?? []).reduce(
+      (acc, g) => acc + (profile.genreNegative[g] ?? 0),
+      0,
+    );
     const antiScore = antiHit ? -Math.min(1.2, antiHit / 3) : 0;
     signals.anti = antiScore;
     score += antiScore * weights.anti;
@@ -472,7 +518,10 @@ export class RecommendationEngine {
     return { title, score, signals, reasons: Array.from(reasons) };
   }
 
-  private diversify(items: { title: Title; score: number; signals: Record<string, number>; reasons: string[] }[], limit: number) {
+  private diversify(
+    items: { title: Title; score: number; signals: Record<string, number>; reasons: string[] }[],
+    limit: number,
+  ) {
     const picked: typeof items = [];
     const usedGenres = new Set<string>();
     const usedPeople = new Set<string>();
@@ -480,7 +529,9 @@ export class RecommendationEngine {
     for (const item of items) {
       if (picked.length >= limit) break;
       const genreOverlap = (item.title.genres ?? []).some((g) => usedGenres.has(g));
-      const peopleOverlap = this.extractPeople(item.title).mainPeople.some((p) => usedPeople.has(p));
+      const peopleOverlap = this.extractPeople(item.title).mainPeople.some((p) =>
+        usedPeople.has(p),
+      );
       if ((genreOverlap || peopleOverlap) && picked.length >= 3) continue;
       picked.push(item);
       item.title.genres?.forEach((g) => usedGenres.add(g));
@@ -544,9 +595,16 @@ export class RecommendationEngine {
 
   private extractPeople(title: Title) {
     const raw = (title.rawTmdbJson ?? {}) as any;
-    const cast: string[] = raw?.credits?.cast?.slice(0, 8)?.map((c: any) => c.name)?.filter(Boolean) ?? [];
-    const directors: string[] = raw?.credits?.crew?.filter((c: any) => c.job === 'Director')?.map((c: any) => c.name) ?? [];
-    const writers: string[] = raw?.credits?.crew?.filter((c: any) => c.department === 'Writing')?.map((c: any) => c.name) ?? [];
+    const cast: string[] =
+      raw?.credits?.cast
+        ?.slice(0, 8)
+        ?.map((c: any) => c.name)
+        ?.filter(Boolean) ?? [];
+    const directors: string[] =
+      raw?.credits?.crew?.filter((c: any) => c.job === 'Director')?.map((c: any) => c.name) ?? [];
+    const writers: string[] =
+      raw?.credits?.crew?.filter((c: any) => c.department === 'Writing')?.map((c: any) => c.name) ??
+      [];
     const mainPeople = [...directors.slice(0, 2), ...cast.slice(0, 4), ...writers.slice(0, 1)];
     return { cast, directors, writers, mainPeople };
   }

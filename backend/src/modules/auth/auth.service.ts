@@ -69,7 +69,12 @@ export class AuthService {
 
     const hashed = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hashed } });
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date() || stored.userId !== payload.sub) {
+    if (
+      !stored ||
+      stored.revokedAt ||
+      stored.expiresAt < new Date() ||
+      stored.userId !== payload.sub
+    ) {
       throw new UnauthorizedException('Refresh token revoked');
     }
 
@@ -89,7 +94,10 @@ export class AuthService {
   async logout(refreshToken: string | undefined) {
     if (!refreshToken) return { ok: true };
     const hashed = this.hashToken(refreshToken);
-    await this.prisma.refreshToken.updateMany({ where: { tokenHash: hashed }, data: { revokedAt: new Date() } });
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash: hashed },
+      data: { revokedAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -147,7 +155,9 @@ export class AuthService {
     );
 
     const decoded = this.jwt.decode(refreshToken) as any;
-    const refreshExpiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const refreshExpiresAt = decoded?.exp
+      ? new Date(decoded.exp * 1000)
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     return { accessToken, refreshToken, refreshExpiresAt };
   }

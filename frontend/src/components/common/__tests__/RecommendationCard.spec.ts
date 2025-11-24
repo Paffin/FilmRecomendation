@@ -4,12 +4,19 @@ import RecommendationCard from '../RecommendationCard.vue';
 import PrimeVue from 'primevue/config';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
+import { createI18n } from 'vue-i18n';
+
+const i18n = createI18n({
+  legacy: false,
+  locale: 'ru',
+  messages: { ru: { recommendations: { why: 'Почему в рекомендациях', like: 'Нравится', dislike: 'Не подходит', more: 'Подробнее', cardBadge: 'AI', noPoster: 'Нет постера' } } },
+});
 
 const mountWithPlugins = (props: any) =>
   mount(RecommendationCard, {
     props,
     global: {
-      plugins: [PrimeVue],
+      plugins: [PrimeVue, i18n],
       components: { Button, Tag },
     },
   });
@@ -24,9 +31,10 @@ describe('RecommendationCard', () => {
   it('emits like/dislike/details', async () => {
     const wrapper = mountWithPlugins({ title: 'Фильм', explanation: ['Тест'] });
     const buttons = wrapper.findAllComponents(Button);
-    await buttons[0].trigger('click'); // details
-    await buttons[1].trigger('click'); // like
-    await buttons[2].trigger('click'); // dislike
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    await buttons[0]?.trigger('click'); // details
+    await buttons[1]?.trigger('click'); // like
+    await buttons[2]?.trigger('click'); // dislike
     expect(wrapper.emitted('details')).toBeTruthy();
     expect(wrapper.emitted('like')).toBeTruthy();
     expect(wrapper.emitted('dislike')).toBeTruthy();

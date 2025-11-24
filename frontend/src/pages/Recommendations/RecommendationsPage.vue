@@ -17,37 +17,37 @@
           </div>
           <div>
             <label>{{ t('recommendations.company') }}</label>
-            <Dropdown v-model="company" :options="companies" optionLabel="label" optionValue="value" />
+            <Dropdown v-model="company" :options="companies" option-label="label" option-value="value" />
           </div>
           <div>
             <label>{{ t('recommendations.time') }}</label>
-            <Dropdown v-model="timeAvailable" :options="times" optionLabel="label" optionValue="value" />
+            <Dropdown v-model="timeAvailable" :options="times" option-label="label" option-value="value" />
           </div>
           <div>
             <label>{{ t('recommendations.novelty') }}</label>
-            <Dropdown v-model="noveltyBias" :options="noveltyOptions" optionLabel="label" optionValue="value" />
+            <Dropdown v-model="noveltyBias" :options="noveltyOptions" option-label="label" option-value="value" />
           </div>
           <div>
             <label>{{ t('recommendations.pace') }}</label>
-            <Dropdown v-model="pace" :options="paceOptions" optionLabel="label" optionValue="value" />
+            <Dropdown v-model="pace" :options="paceOptions" option-label="label" option-value="value" />
           </div>
           <div>
             <label>{{ t('recommendations.freshness') }}</label>
-            <Dropdown v-model="freshness" :options="freshnessOptions" optionLabel="label" optionValue="value" />
+            <Dropdown v-model="freshness" :options="freshnessOptions" option-label="label" option-value="value" />
           </div>
         </div>
       </div>
-      <Button :label="t('common.refresh')" icon="pi pi-refresh" severity="secondary" @click="load" :loading="loading" />
+      <Button :label="t('common.refresh')" icon="pi pi-refresh" severity="secondary" :loading="loading" @click="load" />
     </div>
 
-    <div class="list" v-if="loading">
-      <Skeleton v-for="n in 5" :key="n" height="240px" borderRadius="16px" />
+    <div v-if="loading" class="list">
+      <Skeleton v-for="n in 5" :key="n" height="240px" border-radius="16px" />
     </div>
-    <div class="list" v-else>
+    <div v-else class="list">
       <div v-if="recommendations.length === 0" class="empty">{{ t('recommendations.empty') }}</div>
       <RecommendationCard
-        v-else
         v-for="item in recommendations"
+        v-else
         :key="item.id"
         :title="item.displayTitle"
         :meta="item.meta"

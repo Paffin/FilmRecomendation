@@ -4,7 +4,7 @@
     <div class="step">
       <h3>Типы контента</h3>
       <div class="chips">
-        <ToggleButton v-for="type in types" :key="type.value" :on-label="type.label" :off-label="type.label" v-model="type.selected" />
+        <ToggleButton v-for="type in types" :key="type.value" v-model="type.selected" :on-label="type.label" :off-label="type.label" />
       </div>
     </div>
 
@@ -15,14 +15,14 @@
           <i class="pi pi-search" />
           <InputText v-model="query" placeholder="Найдите фильм, сериал или аниме" class="w-full" />
         </span>
-        <Button label="Искать" @click="search" :loading="searching" />
+        <Button label="Искать" :loading="searching" @click="search" />
       </div>
       <div class="card-grid">
-        <Skeleton v-if="loading" height="220px" v-for="i in 6" :key="i" borderRadius="12px" />
+        <Skeleton v-for="i in 6" v-if="loading" :key="i" height="220px" border-radius="12px" />
         <div v-else-if="results.length === 0" class="empty">Начните поиск, чтобы отметить просмотренное.</div>
         <TitleCard
-          v-else
           v-for="item in results"
+          v-else
           :key="item.tmdbId"
           :title="{
             id: item.tmdbId,

@@ -7,7 +7,7 @@ export async function completeOnboarding() {
   const auth = useAuthStore();
   if (auth.user) {
     auth.user = { ...auth.user, onboardingCompleted: true } as any;
-    auth.persist();
+    auth.persistUser();
   }
   return data;
 }

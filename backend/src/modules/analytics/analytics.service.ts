@@ -87,7 +87,10 @@ export class AnalyticsService {
       countries: countryCounter,
       years,
       decades,
-      antiList: disliked.map((d) => ({ id: d.title.id, title: d.title.russianTitle ?? d.title.originalTitle })),
+      antiList: disliked.map((d) => ({
+        id: d.title.id,
+        title: d.title.russianTitle ?? d.title.originalTitle,
+      })),
     };
   }
 

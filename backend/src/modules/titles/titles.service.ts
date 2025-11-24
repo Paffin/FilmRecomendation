@@ -5,7 +5,10 @@ import { MediaType } from '@prisma/client';
 
 @Injectable()
 export class TitlesService {
-  constructor(private readonly prisma: PrismaService, private readonly tmdb: TmdbService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tmdb: TmdbService,
+  ) {}
 
   async search(query: string, page = 1, mediaType?: MediaType) {
     const tmdbType = mediaType ? this.mapMediaType(mediaType) : 'multi';
@@ -31,8 +34,12 @@ export class TitlesService {
         overview: details.overview ?? '',
         posterPath: details.poster_path,
         backdropPath: details.backdrop_path,
-        releaseDate: details.release_date ? new Date(details.release_date) : details.first_air_date ? new Date(details.first_air_date) : null,
-        runtime: details.runtime ?? (details.episode_run_time?.[0] ?? null),
+        releaseDate: details.release_date
+          ? new Date(details.release_date)
+          : details.first_air_date
+            ? new Date(details.first_air_date)
+            : null,
+        runtime: details.runtime ?? details.episode_run_time?.[0] ?? null,
         tmdbRating: details.vote_average ?? null,
         genres: (details.genres || []).map((g: any) => g.name),
         countries: (details.production_countries || []).map((c: any) => c.iso_3166_1),
