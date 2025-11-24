@@ -2,7 +2,18 @@
   <div class="surface-card">
     <div class="header">
       <h2 class="section-title">История просмотра</h2>
-      <Dropdown v-model="period" :options="periods" option-label="label" option-value="value" />
+      <div class="filters">
+        <Dropdown v-model="period" :options="periods" option-label="label" option-value="value" />
+        <Dropdown v-model="mediaType" :options="mediaTypes" option-label="label" option-value="value" show-clear placeholder="Тип" />
+        <MultiSelect
+          v-model="genres"
+          :options="genreOptions"
+          option-label="label"
+          option-value="value"
+          display="chip"
+          placeholder="Жанры"
+        />
+      </div>
     </div>
     <div v-if="loading" class="list">
       <Skeleton v-for="i in 4" :key="i" height="90px" border-radius="14px" />
@@ -29,6 +40,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
+import MultiSelect from 'primevue/multiselect';
 import Rating from 'primevue/rating';
 import Button from 'primevue/button';
 import Skeleton from 'primevue/skeleton';
@@ -42,8 +54,17 @@ const periods = [
   { label: '90 дней', value: 90 },
   { label: 'Год', value: 365 },
 ];
+const mediaTypes = [
+  { label: 'Все типы', value: null },
+  { label: 'Фильмы', value: 'movie' },
+  { label: 'Сериалы', value: 'tv' },
+  { label: 'Аниме', value: 'anime' },
+  { label: 'Мультфильмы', value: 'cartoon' },
+];
 
 const period = ref(90);
+const mediaType = ref<string | null>(null);
+const genres = ref<string[]>([]);
 const history = ref<UserTitleStateResponse[]>([]);
 const loading = ref(true);
 const toast = useToast();
@@ -59,7 +80,20 @@ onMounted(async () => {
 const filteredHistory = computed(() => {
   const days = period.value;
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return history.value.filter((h) => new Date(h.lastInteractionAt).getTime() >= cutoff);
+  return history.value.filter((h) => {
+    if (new Date(h.lastInteractionAt).getTime() < cutoff) return false;
+    if (mediaType.value && h.title.mediaType !== mediaType.value) return false;
+    if (genres.value.length && !h.title.genres?.some((g) => genres.value.includes(g))) return false;
+    return true;
+  });
+});
+
+const genreOptions = computed(() => {
+  const counter: Record<string, number> = {};
+  history.value.forEach((h) => h.title.genres?.forEach((g) => (counter[g] = (counter[g] ?? 0) + 1)));
+  return Object.keys(counter)
+    .sort()
+    .map((g) => ({ label: `${g} (${counter[g]})`, value: g }));
 });
 
 const meta = (item: UserTitleStateResponse) => {
@@ -108,6 +142,12 @@ const replaceItem = (updated: UserTitleStateResponse) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .list {

@@ -40,6 +40,10 @@
       <Button :label="t('common.refresh')" icon="pi pi-refresh" severity="secondary" :loading="loading" @click="load" />
     </div>
 
+    <div v-if="contextTags.length" class="context-tags surface-card">
+      <Tag v-for="tag in contextTags" :key="tag" :value="tag" />
+    </div>
+
     <div v-if="loading" class="list">
       <Skeleton v-for="n in 5" :key="n" height="240px" border-radius="16px" />
     </div>
@@ -70,6 +74,7 @@ import Button from 'primevue/button';
 import Slider from 'primevue/slider';
 import Dropdown from 'primevue/dropdown';
 import Skeleton from 'primevue/skeleton';
+import Tag from 'primevue/tag';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
@@ -139,6 +144,15 @@ const mindsetLabel = computed(() =>
 );
 const moodParam = computed(() => (mood.value < 40 ? 'light' : mood.value > 70 ? 'heavy' : 'neutral'));
 const mindsetParam = computed(() => (mindset.value < 40 ? 'relax' : mindset.value > 70 ? 'focus' : 'balanced'));
+const contextTags = computed(() => [
+  moodParam.value === 'light' ? 'Лёгкое' : moodParam.value === 'heavy' ? 'Тяжёлое' : 'Нейтральное',
+  mindsetParam.value === 'relax' ? 'Расслабиться' : mindsetParam.value === 'focus' ? 'Подумать' : 'Баланс',
+  companies.find((c) => c.value === company.value)?.label ?? '',
+  times.find((t) => t.value === timeAvailable.value)?.label ?? '',
+  noveltyOptions.find((n) => n.value === noveltyBias.value)?.label ?? '',
+  paceOptions.find((p) => p.value === pace.value)?.label ?? '',
+  freshnessOptions.find((f) => f.value === freshness.value)?.label ?? '',
+].filter(Boolean));
 
 const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard => {
   const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
@@ -259,6 +273,15 @@ onMounted(load);
   margin-top: 16px;
   display: grid;
   gap: 14px;
+}
+
+.context-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .empty {

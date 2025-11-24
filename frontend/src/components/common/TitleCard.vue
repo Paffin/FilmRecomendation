@@ -14,6 +14,13 @@
             size="small"
             @click="$emit('mark', title)"
           />
+          <Button
+            :label="title.disliked ? 'Отменить дизлайк' : 'Не понравилось'"
+            :outlined="!title.disliked"
+            severity="danger"
+            size="small"
+            @click="$emit('dislike', title)"
+          />
         </div>
       </div>
     </div>
@@ -32,6 +39,7 @@ interface TitleCardProps {
     genres?: string[];
     poster?: string | null;
     selected?: boolean;
+    disliked?: boolean;
   };
 }
 

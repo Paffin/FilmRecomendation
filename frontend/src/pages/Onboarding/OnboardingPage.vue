@@ -38,8 +38,10 @@
             genres: item.genres,
             poster: item.poster,
             selected: selected.has(item.tmdbId),
+            disliked: selected.get(item.tmdbId)?.disliked ?? false,
           }"
           @mark="() => toggleWatched(item)"
+          @dislike="() => toggleDislike(item)"
         />
       </div>
     </div>
@@ -85,6 +87,7 @@ interface SearchItem {
   genres?: string[];
   mediaType: MediaType;
   poster?: string | null;
+  disliked?: boolean;
 }
 
 const types = reactive([
@@ -128,7 +131,18 @@ const toggleWatched = (item: SearchItem) => {
   if (selected.has(item.tmdbId)) {
     selected.delete(item.tmdbId);
   } else {
-    selected.set(item.tmdbId, item);
+    selected.set(item.tmdbId, { ...item, disliked: false });
+  }
+};
+
+const toggleDislike = (item: SearchItem) => {
+  const existing = selected.get(item.tmdbId);
+  if (!existing) {
+    selected.set(item.tmdbId, { ...item, disliked: true });
+  } else {
+    const next = { ...existing, disliked: !existing.disliked };
+    // если пользователь дизлайкнул, считаем выбранным; если снял дизлайк и не хотел сохранять — оставляем выбранным
+    selected.set(item.tmdbId, next);
   }
 };
 
@@ -143,7 +157,8 @@ const complete = async () => {
           mediaType: item.mediaType,
           status: 'watched',
           source: 'onboarding',
-          liked: true,
+          liked: !item.disliked,
+          disliked: item.disliked ?? false,
         }),
       ),
     );
