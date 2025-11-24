@@ -4,7 +4,8 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AuthModule } from '../src/modules/auth/auth.module';
 import { PrismaService } from '../src/common/prisma.service';
-import { ConfigService } from '@nestjs/config';
+import { PrismaModule } from '../src/common/prisma.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 const users: any[] = [];
 const refreshTokens: any[] = [];
@@ -26,6 +27,26 @@ const prismaStub: Partial<PrismaService> = {
   } as any,
   refreshToken: {
     findUnique: async ({ where }: any) => refreshTokens.find((t) => t.tokenHash === where.tokenHash) ?? null,
+    findMany: async ({ where }: any) => {
+      let items = [...refreshTokens];
+      if (where?.userId) {
+        items = items.filter((t) => t.userId === where.userId);
+      }
+      if (where?.revokedAt === null) {
+        items = items.filter((t) => t.revokedAt == null);
+      }
+      if (where?.expiresAt?.gt) {
+        const gt = where.expiresAt.gt as Date;
+        items = items.filter((t) => t.expiresAt > gt);
+      }
+      // emulate ordering by lastUsedAt desc, createdAt desc
+      items.sort((a, b) => {
+        const luA = (a.lastUsedAt as Date) ?? (a.createdAt as Date);
+        const luB = (b.lastUsedAt as Date) ?? (b.createdAt as Date);
+        return luB.getTime() - luA.getTime();
+      });
+      return items;
+    },
     create: async ({ data }: any) => {
       const token = { ...data, id: data.id ?? `rt-${refreshTokens.length + 1}`, createdAt: new Date(), revokedAt: null };
       refreshTokens.push(token);
@@ -37,7 +58,12 @@ const prismaStub: Partial<PrismaService> = {
       return token;
     },
     updateMany: async ({ where, data }: any) => {
-      const targets = refreshTokens.filter((t) => !where.tokenHash || t.tokenHash === where.tokenHash);
+      const targets = refreshTokens.filter((t) => {
+        if (where.tokenHash && t.tokenHash !== where.tokenHash) return false;
+        if (where.userId && t.userId !== where.userId) return false;
+        if (where.revokedAt === null && t.revokedAt != null) return false;
+        return true;
+      });
       targets.forEach((t) => Object.assign(t, data));
       return { count: targets.length } as any;
     },
@@ -73,7 +99,13 @@ describe('AuthController (e2e)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [AuthModule],
+      imports: [
+        AuthModule,
+        PrismaModule,
+        ConfigModule.forRoot({
+          isGlobal: true,
+        }),
+      ],
     })
       .overrideProvider(PrismaService)
       .useValue(prismaStub)
@@ -94,7 +126,7 @@ describe('AuthController (e2e)', () => {
   it('registers user and sets refresh cookie', async () => {
     const res = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: 'test@example.com', password: 'qwerty123', displayName: 'Test' })
+      .send({ email: 'test@example.com', password: 'Qwerty123', displayName: 'Test' })
       .expect(201);
 
     expect(res.body.tokens.accessToken).toBeTruthy();
@@ -105,7 +137,7 @@ describe('AuthController (e2e)', () => {
   it('refreshes session via httpOnly cookie', async () => {
     const login = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email: 'test@example.com', password: 'qwerty123' })
+      .send({ email: 'test@example.com', password: 'Qwerty123' })
       .expect(201);
 
     const cookies = login.headers['set-cookie'];

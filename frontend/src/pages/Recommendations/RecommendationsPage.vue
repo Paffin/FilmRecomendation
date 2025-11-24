@@ -180,7 +180,8 @@ const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard =>
 const buildTags = (title: ApiTitle) => {
   const tags: string[] = [];
   if (title.genres?.length) tags.push(...title.genres.slice(0, 2));
-  if (title.countries?.length) tags.push(title.countries[0]);
+  const country = title.countries?.[0];
+  if (country) tags.push(country);
   return tags;
 };
 

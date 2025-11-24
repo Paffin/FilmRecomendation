@@ -132,14 +132,20 @@ const search = async () => {
   searching.value = true;
   try {
     const data = await searchTitles(query.value, activeType.value);
-    results.value = data.results.map((r) => ({
-      tmdbId: r.id,
-      title: r.title || r.name || 'Без названия',
-      year: (r.release_date || r.first_air_date || '').slice(0, 4) || undefined,
-      genres: (r.genre_ids || []).map((id: number) => TMDB_GENRE_MAP[id]).filter(Boolean).slice(0, 3),
-      mediaType: mapMediaType(r.media_type ?? activeType.value),
-      poster: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
-    }));
+    results.value = data.results.map((r) => {
+      const genres = (r.genre_ids || [])
+        .map((id: number) => TMDB_GENRE_MAP[id])
+        .filter((name): name is string => Boolean(name))
+        .slice(0, 3);
+      return {
+        tmdbId: r.id,
+        title: r.title || r.name || 'Без названия',
+        year: (r.release_date || r.first_air_date || '').slice(0, 4) || undefined,
+        genres,
+        mediaType: mapMediaType(r.media_type ?? activeType.value),
+        poster: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
+      };
+    });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Ошибка поиска', detail: 'Не удалось найти тайтлы', life: 4000 });
   } finally {
