@@ -45,11 +45,15 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       if (this.initialized) return;
       this.hydrateUser();
-      registerUnauthorizedHandler(async () => this.refreshWithCookie(true));
-      try {
-        await this.refreshWithCookie(true);
-      } catch {
-        // silent fail — user is not logged in
+      registerUnauthorizedHandler(async () => (this.user ? this.refreshWithCookie(true) : null));
+
+      // Avoid hitting /auth/refresh when we clearly have no session
+      if (this.user) {
+        try {
+          await this.refreshWithCookie(true);
+        } catch {
+          // silent fail — user is not logged in
+        }
       }
       this.initialized = true;
     },
