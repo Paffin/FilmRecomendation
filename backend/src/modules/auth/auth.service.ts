@@ -75,6 +75,9 @@ export class AuthService {
       stored.expiresAt < new Date() ||
       stored.userId !== payload.sub
     ) {
+      if (stored && stored.revokedAt) {
+        await this.revokeAllForUser(stored.userId);
+      }
       throw new UnauthorizedException('Refresh token revoked');
     }
 
@@ -210,6 +213,13 @@ export class AuthService {
     const token = await this.prisma.refreshToken.findUnique({ where: { tokenHash: currentHash } });
     if (!token) return;
     await this.trimActiveTokens(token.userId, 5);
+  }
+
+  private async revokeAllForUser(userId: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private sanitize(user: { passwordHash: string; [key: string]: any }) {
