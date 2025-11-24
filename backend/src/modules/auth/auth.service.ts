@@ -121,23 +121,36 @@ export class AuthService {
   }
 
   private async issueSession(user: any, meta: TokenMeta): Promise<SessionResult> {
-    const tokens = this.generateTokens(user.id, user.email);
-    await this.prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: this.hashToken(tokens.refreshToken),
-        expiresAt: tokens.refreshExpiresAt,
-        userAgent: meta.userAgent?.slice(0, 255) ?? null,
-        ip: meta.ip ?? null,
-      },
-    });
+    // Retry a couple of times in case of rare token hash collision (unique constraint)
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const tokens = this.generateTokens(user.id, user.email);
+      try {
+        await this.prisma.refreshToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: this.hashToken(tokens.refreshToken),
+            expiresAt: tokens.refreshExpiresAt,
+            userAgent: meta.userAgent?.slice(0, 255) ?? null,
+            ip: meta.ip ?? null,
+          },
+        });
 
-    return {
-      user: this.sanitize(user),
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      refreshExpiresAt: tokens.refreshExpiresAt,
-    };
+        return {
+          user: this.sanitize(user),
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          refreshExpiresAt: tokens.refreshExpiresAt,
+        };
+      } catch (e: any) {
+        const isUnique = e?.code === 'P2002' && Array.isArray(e?.meta?.target) && e.meta.target.includes('tokenHash');
+        if (!isUnique || attempt === 2) {
+          throw e;
+        }
+      }
+    }
+
+    // Fallback (should never happen)
+    throw new Error('Failed to issue refresh token');
   }
 
   private generateTokens(userId: string, email: string) {

@@ -33,7 +33,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
     };
 
     const errorLog = isHttp ? (exception as HttpException).message : String(exception);
-    this.logger.error(`${request.method} ${request.url} -> ${status}: ${errorLog}`);
+    const logMessage = `${request.method} ${request.url} -> ${status}: ${errorLog}`;
+
+    if (status >= 500) {
+      this.logger.error(logMessage);
+    } else {
+      this.logger.warn(logMessage);
+    }
     response.status(status).json(payload);
   }
 }
