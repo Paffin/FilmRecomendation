@@ -8,15 +8,19 @@ export class TmdbService {
   private readonly http: AxiosInstance;
   private readonly logger = new Logger(TmdbService.name);
   private readonly language: string;
-  private readonly cache = new Map<string, { expires: number; value: any }>();
+  private readonly cache = new Map<string, { expires: number; value: any; at: number }>();
   private readonly defaultTtl = 5 * 60 * 1000; // 5 минут
+  private readonly maxCacheEntries = 250;
+  private readonly apiKey?: string;
 
   constructor(private readonly config: ConfigService) {
     const accessToken = this.config.get<string>('tmdb.accessToken');
+    this.apiKey = this.config.get<string>('tmdb.apiKey');
     this.language = this.config.get<string>('tmdb.language') ?? 'ru-RU';
     this.http = axios.create({
       baseURL: 'https://api.themoviedb.org/3',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      timeout: 6500,
     });
   }
 
@@ -74,14 +78,51 @@ export class TmdbService {
     }
 
     try {
-      const res = await this.http.get(path, {
-        params,
-        paramsSerializer: (p) => qs.stringify(p, { arrayFormat: 'repeat' }),
-      });
-      this.cache.set(cacheKey, { expires: now + ttl, value: res.data });
-      return res.data;
+      const data = await this.requestWithRetry(path, params);
+      this.setCache(cacheKey, data, ttl);
+      return data;
     } catch (error: any) {
       this.handleError(path, error);
+    }
+  }
+
+  private setCache(key: string, value: any, ttl: number) {
+    const now = Date.now();
+    this.cache.set(key, { value, expires: now + ttl, at: now });
+    if (this.cache.size > this.maxCacheEntries) {
+      const oldestKey = Array.from(this.cache.entries()).sort((a, b) => a[1].at - b[1].at)[0]?.[0];
+      if (oldestKey) this.cache.delete(oldestKey);
+    }
+  }
+
+  private async requestWithRetry(path: string, params: Record<string, any>, attempt = 1, useBearer = true): Promise<any> {
+    try {
+      const res = await this.http.get(path, {
+        params: useBearer || !this.apiKey ? params : { ...params, api_key: this.apiKey },
+        paramsSerializer: (p) => qs.stringify(p, { arrayFormat: 'repeat' }),
+        validateStatus: (status) => status < 500 || status === 503 || status === 429,
+      });
+
+      if (res.status >= 200 && res.status < 300) return res.data;
+
+      if ((res.status === 401 || res.status === 403) && this.apiKey && useBearer) {
+        this.logger.warn(`Bearer token rejected for ${path}, retry with api_key`);
+        return this.requestWithRetry(path, params, attempt + 1, false);
+      }
+
+      if ((res.status === 429 || res.status === 503) && attempt < 3) {
+        const delay = 200 * attempt * attempt;
+        await this.sleep(delay);
+        return this.requestWithRetry(path, params, attempt + 1, useBearer);
+      }
+
+      throw res;
+    } catch (error: any) {
+      if ((error?.code === 'ECONNABORTED' || error?.response?.status === 429) && attempt < 3) {
+        await this.sleep(180 * attempt * attempt);
+        return this.requestWithRetry(path, params, attempt + 1, useBearer);
+      }
+      throw error;
     }
   }
 
@@ -90,5 +131,9 @@ export class TmdbService {
     const message = error?.response?.data?.status_message || error.message;
     this.logger.error(`${operation} TMDB failed: ${message}`);
     throw new HttpException(message ?? 'TMDB error', status ?? 502);
+  }
+
+  private sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

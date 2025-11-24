@@ -2,9 +2,16 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import cookieParser from 'cookie-parser';
+import { HttpExceptionFilter } from './common/http-exception.filter';
+import { LoggingInterceptor } from './common/logging.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule, { cors: false });
+  const config = app.get(ConfigService);
+
+  app.use(cookieParser());
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
@@ -14,6 +21,16 @@ async function bootstrap() {
       forbidUnknownValues: true,
     }),
   );
+
+  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
+
+  const allowedOrigins = config.get<string[]>('cors.allowedOrigins') ?? ['http://localhost:5173'];
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  });
 
   const port = process.env.PORT || 3000;
   await app.listen(port);

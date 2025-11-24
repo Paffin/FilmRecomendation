@@ -9,4 +9,9 @@ export const validationSchema = Joi.object({
   JWT_REFRESH_SECRET: Joi.string().required(),
   JWT_ACCESS_EXPIRES: Joi.string().default('15m'),
   JWT_REFRESH_EXPIRES: Joi.string().default('7d'),
+  FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+  CORS_ALLOWED_ORIGINS: Joi.string().optional(),
+  COOKIE_DOMAIN: Joi.string().optional(),
+  COOKIE_SECURE: Joi.string().valid('true', 'false').optional(),
+  COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').optional(),
 });
