@@ -35,12 +35,18 @@
       <div class="card-grid">
         <Skeleton v-for="n in 4" v-if="similarLoading" :key="n" height="200px" border-radius="14px" />
         <div v-else-if="similar.length === 0" class="empty">Нет похожих тайтлов</div>
-        <div v-for="item in similar" v-else :key="item.tmdbId" class="surface-card sim-card">
+        <div
+          v-for="item in similar"
+          v-else
+          :key="item.tmdbId"
+          class="surface-card sim-card"
+          @click="() => openSimilarDetails(item)"
+        >
           <div class="sim-poster" :style="item.poster ? { backgroundImage: `url(${item.poster})` } : undefined"></div>
           <div class="sim-info">
             <div class="title">{{ item.title }}</div>
             <div class="meta">{{ item.meta }}</div>
-            <Button label="В список" size="small" icon="pi pi-plus" @click="() => quickAdd(item)" />
+            <Button label="В список" size="small" icon="pi pi-plus" @click.stop="() => quickAdd(item)" />
           </div>
         </div>
       </div>
@@ -52,17 +58,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Skeleton from 'primevue/skeleton';
 import { useToast } from 'primevue/usetoast';
-import { getTitle, getSimilar } from '../../api/titles';
+import { getTitle, getSimilar, getTitleByTmdb } from '../../api/titles';
 import { createUserTitle, getUserTitleByTitleId, updateUserTitle } from '../../api/userTitles';
 import type { ApiTitle, MediaType, UserTitleStateResponse } from '../../api/types';
 
 const route = useRoute();
+const router = useRouter();
 const toast = useToast();
 
 const title = ref<ApiTitle | null>(null);
@@ -118,6 +125,20 @@ const fetchSimilar = async () => {
     }));
   } finally {
     similarLoading.value = false;
+  }
+};
+
+const openSimilarDetails = async (item: { tmdbId: number; mediaType: MediaType }) => {
+  try {
+    const details = await getTitleByTmdb(item.tmdbId, item.mediaType);
+    router.push({ path: `/title/${details.id}` });
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось открыть тайтл',
+      detail: 'Попробуйте ещё раз',
+      life: 2500,
+    });
   }
 };
 
@@ -208,6 +229,13 @@ const mapMediaType = (value?: string): MediaType | null => {
 };
 
 onMounted(load);
+
+watch(
+  () => route.params.id,
+  () => {
+    load();
+  },
+);
 </script>
 
 <style scoped>

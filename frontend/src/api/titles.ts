@@ -1,5 +1,5 @@
 import api from './client';
-import type { MediaType } from './types';
+import type { ApiTitle, MediaType } from './types';
 
 export interface TmdbSearchResult {
   id: number;
@@ -18,13 +18,27 @@ export interface SearchResponse {
   total_pages: number;
 }
 
+export async function discoverTitles(mediaType?: MediaType, page = 1) {
+  const { data } = await api.get<SearchResponse>('/titles/discover', {
+    params: { mediaType, page },
+  });
+  return data;
+}
+
 export async function searchTitles(query: string, mediaType?: MediaType, page = 1) {
   const { data } = await api.get<SearchResponse>('/titles/search', { params: { q: query, mediaType, page } });
   return data;
 }
 
 export async function getTitle(id: string) {
-  const { data } = await api.get(`/titles/${id}`);
+  const { data } = await api.get<ApiTitle>(`/titles/${id}`);
+  return data;
+}
+
+export async function getTitleByTmdb(tmdbId: number, mediaType: MediaType) {
+  const { data } = await api.get<ApiTitle>(`/titles/tmdb/${tmdbId}`, {
+    params: { mediaType },
+  });
   return data;
 }
 

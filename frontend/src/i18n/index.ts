@@ -19,6 +19,7 @@ const messages = {
       freshness: 'Свежесть',
       like: 'Нравится',
       dislike: 'Не подходит',
+      watched: 'Смотрел',
       more: 'Подробнее',
       why: 'Почему в рекомендациях',
       empty: 'Пока нет рекомендаций. Попробуйте обновить настройки.',
@@ -52,6 +53,7 @@ const messages = {
     notifications: {
       added: 'Добавлено',
       savedToWatchlist: 'Тайтл в списке к просмотру',
+      markedWatched: 'Тайтл отмечен как просмотренный',
     },
     common: {
       refresh: 'Обновить',

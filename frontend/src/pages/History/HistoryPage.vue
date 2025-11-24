@@ -22,7 +22,9 @@
       <div v-if="filteredHistory.length === 0" class="empty">Пока нет просмотренных тайтлов за выбранный период.</div>
       <div v-for="item in filteredHistory" v-else :key="item.id" class="surface-card row">
         <div>
-          <div class="title">{{ item.title.russianTitle || item.title.originalTitle }}</div>
+          <RouterLink class="title" :to="`/title/${item.title.id}`">
+            {{ item.title.russianTitle || item.title.originalTitle }}
+          </RouterLink>
           <div class="meta">{{ formatDate(item.lastInteractionAt) }} · {{ meta(item) }}</div>
         </div>
         <div class="actions">
@@ -47,6 +49,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import Dropdown, { type DropdownChangeEvent } from 'primevue/dropdown';
 import MultiSelect from 'primevue/multiselect';
 import Rating from 'primevue/rating';

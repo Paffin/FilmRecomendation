@@ -9,7 +9,19 @@ import { createI18n } from 'vue-i18n';
 const i18n = createI18n({
   legacy: false,
   locale: 'ru',
-  messages: { ru: { recommendations: { why: 'Почему в рекомендациях', like: 'Нравится', dislike: 'Не подходит', more: 'Подробнее', cardBadge: 'AI', noPoster: 'Нет постера' } } },
+  messages: {
+    ru: {
+      recommendations: {
+        why: 'Почему в рекомендациях',
+        like: 'Нравится',
+        dislike: 'Не подходит',
+        watched: 'Смотрел',
+        more: 'Подробнее',
+        cardBadge: 'AI',
+        noPoster: 'Нет постера',
+      },
+    },
+  },
 });
 
 const mountWithPlugins = (props: any) =>
@@ -31,11 +43,13 @@ describe('RecommendationCard', () => {
   it('emits like/dislike/details', async () => {
     const wrapper = mountWithPlugins({ title: 'Фильм', explanation: ['Тест'] });
     const buttons = wrapper.findAllComponents(Button);
-    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    expect(buttons.length).toBeGreaterThanOrEqual(4);
     await buttons[0]?.trigger('click'); // details
-    await buttons[1]?.trigger('click'); // like
-    await buttons[2]?.trigger('click'); // dislike
+    await buttons[1]?.trigger('click'); // watched
+    await buttons[2]?.trigger('click'); // like
+    await buttons[3]?.trigger('click'); // dislike
     expect(wrapper.emitted('details')).toBeTruthy();
+    expect(wrapper.emitted('watched')).toBeTruthy();
     expect(wrapper.emitted('like')).toBeTruthy();
     expect(wrapper.emitted('dislike')).toBeTruthy();
   });

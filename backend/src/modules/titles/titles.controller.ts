@@ -6,6 +6,19 @@ import { MediaType } from '@prisma/client';
 export class TitlesController {
   constructor(private readonly service: TitlesService) {}
 
+  @Get('discover')
+  discover(
+    @Query('page') page = '1',
+    @Query('mediaType') mediaType?: MediaType,
+  ) {
+    return this.service.discover(Number(page) || 1, mediaType);
+  }
+
+  @Get('tmdb/:tmdbId')
+  findByTmdb(@Param('tmdbId') tmdbId: string, @Query('mediaType') mediaType: MediaType) {
+    return this.service.getOrCreateFromTmdb(Number(tmdbId), mediaType);
+  }
+
   @Get('search')
   search(
     @Query('q') q: string,

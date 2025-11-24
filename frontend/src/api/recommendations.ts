@@ -20,7 +20,7 @@ export async function fetchRecommendations(params: RecommendationQuery = {}) {
 export async function sendRecommendationFeedback(payload: {
   sessionId: string;
   titleId: string;
-  feedback: 'like' | 'dislike';
+  feedback: 'like' | 'dislike' | 'watched';
 }) {
   const { data } = await api.post('/recommendations/feedback', payload);
   return data;

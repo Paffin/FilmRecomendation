@@ -10,6 +10,21 @@ export class TitlesService {
     private readonly tmdb: TmdbService,
   ) {}
 
+  /**
+   * Lightweight discovery endpoint for onboarding.
+   * Returns trending / popular titles by media type without persisting them.
+   */
+  async discover(page = 1, mediaType?: MediaType) {
+    // If mediaType is not specified, use "all" to get a diverse mix.
+    const tmdbType = mediaType ? this.mapMediaType(mediaType) : 'all';
+    // Prefer trending as it reflects свежие и живые рекомендации.
+    const trending = await this.tmdb.trending(tmdbType, 'week', page);
+    // Fallback to popular if for some reason TMDB does not return results.
+    if (trending?.results?.length) return trending;
+    const fallbackType = mediaType ? this.mapMediaType(mediaType) : 'movie';
+    return this.tmdb.popular(fallbackType, page);
+  }
+
   async search(query: string, page = 1, mediaType?: MediaType) {
     const tmdbType = mediaType ? this.mapMediaType(mediaType) : 'multi';
     const results = await this.tmdb.search(query, page, tmdbType);

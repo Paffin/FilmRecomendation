@@ -9,6 +9,8 @@ export class RecommendationFeedbackDto {
   @IsNotEmpty()
   titleId!: string;
 
-  @IsIn(['like', 'dislike'], { message: 'feedback must be like|dislike' })
-  feedback!: 'like' | 'dislike';
+  @IsIn(['like', 'dislike', 'watched'], {
+    message: 'feedback must be like|dislike|watched',
+  })
+  feedback!: 'like' | 'dislike' | 'watched';
 }

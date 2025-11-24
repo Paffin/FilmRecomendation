@@ -57,69 +57,86 @@ export class RecommendationsService {
   }
 
   async handleFeedback(userId: string, dto: RecommendationFeedbackDto) {
-    // if titleId refers to Title rather than item ID, adjust search
+    // titleId always refers to Title ID from API payload
     const title = await this.prisma.title.findUnique({ where: { id: dto.titleId } });
     const session = await this.prisma.recommendationSession.findUnique({
       where: { id: dto.sessionId },
     });
     if (!session || !title) throw new NotFoundException('Session or title not found');
 
+    const isLike = dto.feedback === 'like';
+    const isDislike = dto.feedback === 'dislike';
+    const isWatched = dto.feedback === 'watched';
+
     await this.prisma.feedbackEvent.create({
       data: {
         userId,
         titleId: title.id,
-        value: dto.feedback === 'like' ? 1 : -1,
+        value: isLike || isWatched ? 1 : -1,
         context: FeedbackContext.recommendation_card,
         recommendationSessionId: dto.sessionId,
       },
     });
 
-    // Обновляем пользовательский статус / антисписок
+    // Обновляем пользовательский статус / антисписок / историю
+    const status =
+      isWatched ? TitleStatus.watched : isDislike ? TitleStatus.dropped : TitleStatus.planned;
+
     await this.prisma.userTitleState.upsert({
       where: { userId_titleId: { userId, titleId: title.id } },
       update: {
-        liked: dto.feedback === 'like',
-        disliked: dto.feedback === 'dislike',
-        status: dto.feedback === 'dislike' ? TitleStatus.dropped : TitleStatus.planned,
+        liked: isLike,
+        disliked: isDislike,
+        status,
         lastInteractionAt: new Date(),
         source: 'recommendation',
       },
       create: {
         userId,
         titleId: title.id,
-        liked: dto.feedback === 'like',
-        disliked: dto.feedback === 'dislike',
-        status: dto.feedback === 'dislike' ? TitleStatus.dropped : TitleStatus.planned,
+        liked: isLike,
+        disliked: isDislike,
+        status,
         source: 'recommendation',
       },
     });
 
-    if (dto.feedback === 'dislike') {
-      await this.prisma.recommendationItem.updateMany({
-        where: { sessionId: dto.sessionId, titleId: title.id },
-        data: { replaced: true },
+    // Помечаем текущий элемент как заменённый/отработанный, чтобы не рекомендовать его повторно в рамках сессии
+    await this.prisma.recommendationItem.updateMany({
+      where: { sessionId: dto.sessionId, titleId: title.id },
+      data: { replaced: true },
+    });
+
+    // Для любого фидбэка (лайк, дизлайк, смотрел) пытаемся подобрать новую, более релевантную замену
+    const context = session.context as RecommendationContext;
+    const replacement = (await this.engine.recommend(userId, 1, context))[0];
+    if (replacement) {
+      // Если такой тайтл уже присутствует в текущей сессии, не создаём дубликат (из‑за unique(sessionId,titleId))
+      const existingItem = await this.prisma.recommendationItem.findFirst({
+        where: { sessionId: session.id, titleId: replacement.title.id },
       });
 
-      const context = session.context as RecommendationContext;
-      const replacement = (await this.engine.recommend(userId, 1, context))[0];
-      if (replacement) {
-        const created = await this.prisma.recommendationItem.create({
-          data: {
-            sessionId: session.id,
-            titleId: replacement.title.id,
-            rank: 99,
-            score: replacement.score,
-            signals: replacement.signals,
-          },
-        });
-        return {
-          replacement: {
-            title: replacement.title,
-            explanation: replacement.explanation,
-            itemId: created.id,
-          },
-        };
-      }
+      const itemId =
+        existingItem?.id ??
+        (
+          await this.prisma.recommendationItem.create({
+            data: {
+              sessionId: session.id,
+              titleId: replacement.title.id,
+              rank: 99,
+              score: replacement.score,
+              signals: replacement.signals,
+            },
+          })
+        ).id;
+
+      return {
+        replacement: {
+          title: replacement.title,
+          explanation: replacement.explanation,
+          itemId,
+        },
+      };
     }
 
     return { ok: true };

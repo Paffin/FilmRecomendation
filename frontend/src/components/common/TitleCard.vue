@@ -1,25 +1,34 @@
 <template>
   <div class="title-card surface-card">
     <div class="meta-row">
-      <div class="poster" :style="posterStyle">
+      <div class="poster" :style="posterStyle" @click="$emit('details', title)">
         <span v-if="!title.poster" class="placeholder">Нет постера</span>
       </div>
       <div class="info">
-        <div class="title">{{ title.name }}</div>
+        <div class="title" @click="$emit('details', title)">{{ title.name }}</div>
         <div class="meta">{{ [title.year, title.genres?.join(', ')].filter(Boolean).join(' · ') }}</div>
         <div class="actions">
           <Button
-            :label="title.selected ? 'Убрать' : 'Смотрел'"
+            icon="pi pi-thumbs-up"
+            :label="title.selected ? 'Убрать' : 'Нравится'"
             :severity="title.selected ? 'secondary' : 'success'"
             size="small"
-            @click="$emit('mark', title)"
+            @click.stop="$emit('mark', title)"
           />
           <Button
-            :label="title.disliked ? 'Отменить дизлайк' : 'Не понравилось'"
+            icon="pi pi-thumbs-down"
+            :label="title.disliked ? 'Отменить дизлайк' : 'Не нравится'"
             :outlined="!title.disliked"
             severity="danger"
             size="small"
-            @click="$emit('dislike', title)"
+            @click.stop="$emit('dislike', title)"
+          />
+          <Button
+            icon="pi pi-eye"
+            label="Подробнее"
+            text
+            size="small"
+            @click.stop="$emit('details', title)"
           />
         </div>
       </div>
@@ -57,6 +66,12 @@ const posterStyle = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 0.18s ease-out;
+}
+
+.title-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
 }
 
 .meta-row {
@@ -73,6 +88,7 @@ const posterStyle = computed(() =>
   display: grid;
   place-items: center;
   color: var(--text-secondary);
+  overflow: hidden;
 }
 
 .title {

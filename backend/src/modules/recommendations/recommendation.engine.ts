@@ -253,8 +253,10 @@ export class RecommendationEngine {
     return Math.max(-1, Math.min(1, (avgYear - 2012) / 15));
   }
 
-  private cacheKey(userId: string, context: RecommendationContext) {
-    return `${userId}:${context.mood ?? 'm'}:${context.mindset ?? 'ms'}:${context.company ?? 'c'}:${context.timeAvailable ?? 't'}:${context.noveltyBias ?? 'mix'}:${context.freshness ?? 'any'}`;
+  private cacheKey(userId: string, context: RecommendationContext, profileUpdatedAt: string) {
+    // Включаем updatedAt профиля вкуса, чтобы кэш кандидатов автоматически
+    // инвалидавался после новых лайков/дизлайков/просмотров.
+    return `${userId}:${profileUpdatedAt}:${context.mood ?? 'm'}:${context.mindset ?? 'ms'}:${context.company ?? 'c'}:${context.timeAvailable ?? 't'}:${context.noveltyBias ?? 'mix'}:${context.freshness ?? 'any'}`;
   }
 
   private async buildCandidatePool(
@@ -263,7 +265,7 @@ export class RecommendationEngine {
     targetSize: number,
     context: RecommendationContext,
   ): Promise<Candidate[]> {
-    const key = this.cacheKey(userId, context);
+    const key = this.cacheKey(userId, context, profile.updatedAt);
     const cached = this.candidateCache.get(key);
     const now = Date.now();
     if (cached && cached.expires > now) {

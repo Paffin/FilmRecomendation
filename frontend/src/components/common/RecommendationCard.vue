@@ -22,8 +22,22 @@
       <div class="actions">
         <Button icon="pi pi-eye" :label="t('recommendations.more')" text @click="$emit('details')" />
         <span class="spacer" />
+        <Button
+          icon="pi pi-check-circle"
+          :label="t('recommendations.watched')"
+          :disabled="busy"
+          text
+          @click="$emit('watched')"
+        />
         <Button icon="pi pi-thumbs-up" :label="t('recommendations.like')" :disabled="busy" @click="$emit('like')" />
-        <Button icon="pi pi-times" :label="t('recommendations.dislike')" :disabled="busy" severity="danger" outlined @click="$emit('dislike')" />
+        <Button
+          icon="pi pi-times"
+          :label="t('recommendations.dislike')"
+          :disabled="busy"
+          severity="danger"
+          outlined
+          @click="$emit('dislike')"
+        />
       </div>
     </div>
   </div>
@@ -62,6 +76,14 @@ const posterStyle = computed(() =>
   gap: 16px;
   position: relative;
   overflow: hidden;
+  border-radius: 16px;
+  transition: transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 0.2s ease-out, background 0.25s ease-out;
+  animation: rec-fade-in 0.35s ease-out;
+}
+
+.rec-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45);
 }
 
 .poster {
@@ -146,6 +168,17 @@ const posterStyle = computed(() =>
   padding: 6px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
+}
+
+@keyframes rec-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 768px) {

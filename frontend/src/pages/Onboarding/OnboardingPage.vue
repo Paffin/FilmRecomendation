@@ -1,6 +1,9 @@
 <template>
   <div class="surface-card onboarding">
     <h2 class="section-title">Онбординг вкуса</h2>
+    <p class="subtitle">
+      Лайкайте и дизлайкайте тайтлы — так мы обучим рекомендации под ваш вкус ещё до первой подборки.
+    </p>
     <div class="step">
       <h3>Типы контента</h3>
       <div class="chips">
@@ -9,9 +12,9 @@
     </div>
 
     <div class="step">
-      <h3>Отметьте, что уже смотрели</h3>
+      <h3>Отметьте хотя бы 5 тайтлов</h3>
       <div class="progress-row">
-        <div class="progress-label">Нужно минимум 5 тайтлов</div>
+        <div class="progress-label">Минимум 5 тайтлов (лайк или дизлайк), дальше — без ограничений</div>
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: progress + '%' }" />
         </div>
@@ -24,9 +27,11 @@
         </span>
         <Button label="Искать" :loading="searching" @click="search" />
       </div>
-      <div class="card-grid">
-        <Skeleton v-for="i in 6" v-if="loading" :key="i" height="220px" border-radius="12px" />
-        <div v-else-if="results.length === 0" class="empty">Начните поиск, чтобы отметить просмотренное.</div>
+      <TransitionGroup name="onb-fade" tag="div" class="card-grid">
+        <Skeleton v-for="i in 5" v-if="loading" :key="i" height="220px" border-radius="12px" />
+        <div v-else-if="results.length === 0" class="empty">
+          Не удалось подобрать стартовые тайтлы. Попробуйте изменить тип контента или воспользоваться поиском.
+        </div>
         <TitleCard
           v-for="item in results"
           v-else
@@ -42,8 +47,9 @@
           }"
           @mark="() => toggleWatched(item)"
           @dislike="() => toggleDislike(item)"
+          @details="() => openDetails(item)"
         />
-      </div>
+      </TransitionGroup>
     </div>
 
     <div class="footer">
@@ -54,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import ToggleButton from 'primevue/togglebutton';
@@ -63,7 +69,7 @@ import { useRouter } from 'vue-router';
 import TitleCard from '../../components/common/TitleCard.vue';
 import { useToast } from 'primevue/usetoast';
 import type { MediaType } from '../../api/types';
-import { searchTitles } from '../../api/titles';
+import { searchTitles, discoverTitles, getTitleByTmdb, type TmdbSearchResult } from '../../api/titles';
 import { createUserTitle } from '../../api/userTitles';
 import { completeOnboarding } from '../../api/users';
 import { useAuthStore } from '../../store/auth';
@@ -126,26 +132,48 @@ const activeType = computed<MediaType | undefined>(() => {
   return undefined;
 });
 
+const mapResults = (items: TmdbSearchResult[], fallbackMediaType?: MediaType): SearchItem[] =>
+  items.map((r) => {
+    const genres = (r.genre_ids || [])
+      .map((id: number) => TMDB_GENRE_MAP[id])
+      .filter((name): name is string => Boolean(name))
+      .slice(0, 3);
+    return {
+      tmdbId: r.id,
+      title: r.title || r.name || 'Без названия',
+      year: (r.release_date || r.first_air_date || '').slice(0, 4) || undefined,
+      genres,
+      mediaType: mapMediaType(r.media_type ?? fallbackMediaType),
+      poster: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
+    };
+  });
+
+const loadInitial = async () => {
+  loading.value = true;
+  try {
+    const data = await discoverTitles(activeType.value);
+    // берём первые 5 тайтлов, чтобы сразу дать пользователю компактную, но разнообразную подборку
+    results.value = mapResults(data.results.slice(0, 5), activeType.value);
+  } catch (e) {
+    results.value = [];
+    toast.add({
+      severity: 'warn',
+      summary: 'Не удалось загрузить подборку',
+      detail: 'Попробуйте выбрать другой тип или воспользоваться поиском',
+      life: 3500,
+    });
+  } finally {
+    loading.value = false;
+  }
+};
+
 const search = async () => {
   if (!query.value.trim()) return;
   loading.value = true;
   searching.value = true;
   try {
     const data = await searchTitles(query.value, activeType.value);
-    results.value = data.results.map((r) => {
-      const genres = (r.genre_ids || [])
-        .map((id: number) => TMDB_GENRE_MAP[id])
-        .filter((name): name is string => Boolean(name))
-        .slice(0, 3);
-      return {
-        tmdbId: r.id,
-        title: r.title || r.name || 'Без названия',
-        year: (r.release_date || r.first_air_date || '').slice(0, 4) || undefined,
-        genres,
-        mediaType: mapMediaType(r.media_type ?? activeType.value),
-        poster: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
-      };
-    });
+    results.value = mapResults(data.results.slice(0, 20), activeType.value);
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Ошибка поиска', detail: 'Не удалось найти тайтлы', life: 4000 });
   } finally {
@@ -170,6 +198,20 @@ const toggleDislike = (item: SearchItem) => {
     const next = { ...existing, disliked: !existing.disliked };
     // если пользователь дизлайкнул, считаем выбранным; если снял дизлайк и не хотел сохранять — оставляем выбранным
     selected.set(item.tmdbId, next);
+  }
+};
+
+const openDetails = async (item: SearchItem) => {
+  try {
+    const title = await getTitleByTmdb(item.tmdbId, item.mediaType);
+    router.push({ path: `/title/${title.id}` });
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось открыть страницу тайтла',
+      detail: 'Попробуйте ещё раз чуть позже',
+      life: 3000,
+    });
   }
 };
 
@@ -211,6 +253,20 @@ const mapMediaType = (value?: string | MediaType): MediaType => {
   if (value === 'cartoon') return 'cartoon';
   return 'tv'; // TMDB не различает аниме/мультфильмы, мапим в tv
 };
+
+onMounted(() => {
+  loadInitial();
+});
+
+watch(
+  activeType,
+  () => {
+    // Если пользователь ещё не ввёл запрос, обновляем витрину под выбранный тип
+    if (!query.value.trim()) {
+      loadInitial();
+    }
+  },
+);
 </script>
 
 <style scoped>
@@ -218,6 +274,12 @@ const mapMediaType = (value?: string | MediaType): MediaType => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.subtitle {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 
 .step {
@@ -264,6 +326,8 @@ const mapMediaType = (value?: string | MediaType): MediaType => {
   top: 0;
   bottom: 0;
   background: linear-gradient(135deg, #8ab4ff, #ff49a7);
+   transition: width 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+   box-shadow: 0 0 16px rgba(138, 180, 255, 0.45);
 }
 
 .empty {
@@ -274,5 +338,16 @@ const mapMediaType = (value?: string | MediaType): MediaType => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.onb-fade-enter-active,
+.onb-fade-leave-active {
+  transition: all 0.25s ease-out;
+}
+
+.onb-fade-enter-from,
+.onb-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>

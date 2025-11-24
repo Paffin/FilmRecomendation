@@ -4,6 +4,9 @@
       <div>
         <p class="eyebrow">{{ t('recommendations.modeTitle') }}</p>
         <h2 class="section-title">{{ t('recommendations.todayWant') }}</h2>
+        <p class="subtitle">
+          Каждый лайк, дизлайк и «Смотрел» мгновенно переобучает подборку под ваш текущий настрой.
+        </p>
         <div class="context-grid">
           <div>
             <label>{{ t('recommendations.mood') }}</label>
@@ -47,7 +50,7 @@
     <div v-if="loading" class="list">
       <Skeleton v-for="n in 5" :key="n" height="240px" border-radius="16px" />
     </div>
-    <div v-else class="list">
+    <TransitionGroup v-else name="rec-fade" tag="div" class="list">
       <div v-if="recommendations.length === 0" class="empty">{{ t('recommendations.empty') }}</div>
       <RecommendationCard
         v-for="item in recommendations"
@@ -61,10 +64,11 @@
         :explanation="item.explanation"
         :busy="actionLoading === item.id"
         @like="like(item)"
+        @watched="watched(item)"
         @dislike="dislike(item)"
         @details="openDetails(item)"
       />
-    </div>
+    </TransitionGroup>
   </div>
 </template>
 
@@ -211,12 +215,69 @@ const like = async (item: RecCard) => {
   if (!sessionId.value) return;
   actionLoading.value = item.id;
   try {
-    await sendRecommendationFeedback({ sessionId: sessionId.value, titleId: item.id, feedback: 'like' });
-    recommendations.value = recommendations.value.filter((r) => r.id !== item.id);
-    toast.add({ severity: 'success', summary: t('notifications.added'), detail: t('notifications.savedToWatchlist'), life: 2500 });
+    const res = await sendRecommendationFeedback({
+      sessionId: sessionId.value,
+      titleId: item.id,
+      feedback: 'like',
+    });
+    const index = recommendations.value.findIndex((r) => r.id === item.id);
+    const replacement = res?.replacement ? mapToCard(res.replacement) : null;
+    if (index >= 0) {
+      if (replacement) {
+        recommendations.value.splice(index, 1, replacement);
+      } else {
+        // если движок не смог найти замену, обновляем всю подборку
+        recommendations.value.splice(index, 1);
+        await load();
+      }
+    }
+    toast.add({
+      severity: 'success',
+      summary: t('notifications.added'),
+      detail: t('notifications.savedToWatchlist'),
+      life: 2500,
+    });
     if (recommendations.value.length === 0) await load();
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Не удалось сохранить', detail: 'Попробуйте ещё раз', life: 4000 });
+  } finally {
+    actionLoading.value = null;
+  }
+};
+
+const watched = async (item: RecCard) => {
+  if (!sessionId.value) return;
+  actionLoading.value = item.id;
+  try {
+    const res = await sendRecommendationFeedback({
+      sessionId: sessionId.value,
+      titleId: item.id,
+      feedback: 'watched',
+    });
+    const index = recommendations.value.findIndex((r) => r.id === item.id);
+    const replacement = res?.replacement ? mapToCard(res.replacement) : null;
+    if (index >= 0) {
+      if (replacement) {
+        recommendations.value.splice(index, 1, replacement);
+      } else {
+        recommendations.value.splice(index, 1);
+        await load();
+      }
+    }
+    toast.add({
+      severity: 'success',
+      summary: t('notifications.added'),
+      detail: t('notifications.markedWatched'),
+      life: 2500,
+    });
+    if (recommendations.value.length === 0) await load();
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось сохранить',
+      detail: 'Попробуйте ещё раз',
+      life: 4000,
+    });
   } finally {
     actionLoading.value = null;
   }
@@ -226,12 +287,20 @@ const dislike = async (item: RecCard) => {
   if (!sessionId.value) return;
   actionLoading.value = item.id;
   try {
-    const res = await sendRecommendationFeedback({ sessionId: sessionId.value, titleId: item.id, feedback: 'dislike' });
+    const res = await sendRecommendationFeedback({
+      sessionId: sessionId.value,
+      titleId: item.id,
+      feedback: 'dislike',
+    });
     const index = recommendations.value.findIndex((r) => r.id === item.id);
-    if (res?.replacement?.title && index >= 0) {
-      recommendations.value.splice(index, 1, mapToCard(res.replacement));
-    } else {
-      recommendations.value = recommendations.value.filter((r) => r.id !== item.id);
+    const replacement = res?.replacement ? mapToCard(res.replacement) : null;
+    if (index >= 0) {
+      if (replacement) {
+        recommendations.value.splice(index, 1, replacement);
+      } else {
+        recommendations.value.splice(index, 1);
+        await load();
+      }
     }
     toast.add({ severity: 'info', summary: 'Обновлено', detail: 'Мы учли ваш дизлайк', life: 2500 });
     if (recommendations.value.length === 0) await load();
@@ -306,5 +375,22 @@ small {
   font-size: 12px;
   color: var(--text-secondary);
   margin: 0 0 6px;
+}
+
+.subtitle {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.rec-fade-enter-active,
+.rec-fade-leave-active {
+  transition: all 0.25s ease-out;
+}
+
+.rec-fade-enter-from,
+.rec-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>

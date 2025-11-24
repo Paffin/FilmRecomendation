@@ -65,7 +65,7 @@
       <div v-if="loading" class="chart-skeleton"><Skeleton height="120px" border-radius="12px" /></div>
       <div v-else-if="taste && taste.antiList.length" class="anti">
         <div v-for="item in taste.antiList" :key="item.id" class="anti-row">
-          <span>{{ item.title }}</span>
+          <RouterLink class="anti-title" :to="`/title/${item.id}`">{{ item.title }}</RouterLink>
           <Button label="Вернуть" size="small" text icon="pi pi-undo" @click="() => restoreFromAnti(item.id)" />
         </div>
       </div>
@@ -76,6 +76,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import Skeleton from 'primevue/skeleton';
 import Button from 'primevue/button';
 import { Bar, Radar, Doughnut } from 'vue-chartjs';
@@ -252,5 +253,9 @@ const doughnutOptions: ChartOptions<'doughnut'> = {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+}
+
+.anti-title {
+  font-weight: 500;
 }
 </style>
