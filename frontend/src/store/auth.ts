@@ -16,6 +16,27 @@ interface AuthState {
 }
 
 const persistKey = 'kinovkus-user';
+const refreshMarkerKey = 'kinovkus-refresh-present';
+
+const markRefreshPresent = (present: boolean) => {
+  try {
+    if (present) {
+      localStorage.setItem(refreshMarkerKey, '1');
+    } else {
+      localStorage.removeItem(refreshMarkerKey);
+    }
+  } catch {
+    // ignore storage issues (private mode, etc.)
+  }
+};
+
+const hasRefreshMarker = () => {
+  try {
+    return localStorage.getItem(refreshMarkerKey) === '1';
+  } catch {
+    return false;
+  }
+};
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
@@ -45,10 +66,14 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       if (this.initialized) return;
       this.hydrateUser();
-      registerUnauthorizedHandler(async () => (this.user ? this.refreshWithCookie(true) : null));
+      const canRefresh = this.user !== null || hasRefreshMarker();
+
+      registerUnauthorizedHandler(async () =>
+        this.user || hasRefreshMarker() ? this.refreshWithCookie(true) : null,
+      );
 
       // Avoid hitting /auth/refresh when we clearly have no session
-      if (this.user) {
+      if (canRefresh) {
         try {
           await this.refreshWithCookie(true);
         } catch {
@@ -79,9 +104,11 @@ export const useAuthStore = defineStore('auth', {
       try {
         const { data } = await api.post('/auth/refresh');
         this.setSession(data.user, data.tokens.accessToken);
+        markRefreshPresent(true);
         return data.tokens.accessToken ?? null;
       } catch (e) {
         if (!silent) throw e;
+        markRefreshPresent(false);
         this.logout(false);
         return null;
       }
@@ -108,6 +135,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = null;
       this.accessToken = null;
       sessionStorage.removeItem(persistKey);
+      markRefreshPresent(false);
       setAccessToken(null);
     },
     setSession(user: User, accessToken: string) {
@@ -115,6 +143,7 @@ export const useAuthStore = defineStore('auth', {
       this.accessToken = accessToken;
       setAccessToken(accessToken);
       this.persistUser();
+      markRefreshPresent(true);
     },
   },
   getters: {
