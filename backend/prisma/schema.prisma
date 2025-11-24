@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MediaType {
+  movie
+  tv
+  anime
+  cartoon
+}
+
+enum TitleSource {
+  onboarding
+  search
+  recommendation
+  manual
+}
+
+enum TitleStatus {
+  planned
+  watching
+  watched
+  dropped
+}
+
+enum FeedbackContext {
+  recommendation_card
+  title_page
+  history
+  onboarding
+}
+
+model User {
+  id                   String   @id @default(uuid())
+  email                String   @unique
+  passwordHash         String
+  displayName          String
+  onboardingCompleted  Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  userTitleStates      UserTitleState[]
+  feedbackEvents       FeedbackEvent[]
+  recommendationSessions RecommendationSession[]
+  tasteProfile         UserTasteProfile?
+}
+
+model Title {
+  id               String   @id @default(uuid())
+  tmdbId           Int      @unique
+  imdbId           String?
+  mediaType        MediaType
+  originalTitle    String
+  russianTitle     String
+  overview         String
+  posterPath       String?
+  backdropPath     String?
+  releaseDate      DateTime?
+  runtime          Int?
+  tmdbRating       Float?
+  genres           String[]
+  countries        String[]
+  originalLanguage String
+  rawTmdbJson      Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  userTitleStates  UserTitleState[]
+  feedbackEvents   FeedbackEvent[]
+  recommendationItems RecommendationItem[]
+}
+
+model UserTitleState {
+  id                String      @id @default(uuid())
+  userId            String
+  titleId           String
+  status            TitleStatus
+  source            TitleSource
+  liked             Boolean     @default(false)
+  disliked          Boolean     @default(false)
+  rating            Int?
+  lastInteractionAt DateTime    @default(now())
+
+  user   User  @relation(fields: [userId], references: [id])
+  title  Title @relation(fields: [titleId], references: [id])
+
+  @@unique([userId, titleId])
+  @@index([userId, status])
+}
+
+model FeedbackEvent {
+  id                      String       @id @default(uuid())
+  userId                  String
+  titleId                 String
+  value                   Int
+  context                 FeedbackContext
+  recommendationSessionId String?
+  createdAt               DateTime @default(now())
+
+  user   User  @relation(fields: [userId], references: [id])
+  title  Title @relation(fields: [titleId], references: [id])
+  recommendationSession RecommendationSession? @relation(fields: [recommendationSessionId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model RecommendationSession {
+  id        String    @id @default(uuid())
+  userId    String
+  context   Json
+  createdAt DateTime  @default(now())
+
+  user    User   @relation(fields: [userId], references: [id])
+  items   RecommendationItem[]
+}
+
+model RecommendationItem {
+  id        String   @id @default(uuid())
+  sessionId String
+  titleId   String
+  rank      Int
+  score     Float
+  signals   Json
+  replaced  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  session RecommendationSession @relation(fields: [sessionId], references: [id])
+  title   Title                 @relation(fields: [titleId], references: [id])
+
+  @@index([sessionId])
+}
+
+model UserTasteProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  data      Json
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
