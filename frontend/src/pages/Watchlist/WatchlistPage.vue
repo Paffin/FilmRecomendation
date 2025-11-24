@@ -10,14 +10,14 @@
     <div v-else class="card-grid">
       <div v-if="items.length === 0" class="empty">Нет тайтлов в списке. Лайкните рекомендации, чтобы добавить.</div>
       <div v-else v-for="item in items" :key="item.id" class="surface-card watch-item">
-        <div class="title">{{ item.title.russianTitle || item.title.originalTitle }}</div>
+        <RouterLink class="title" :to="`/title/${item.title.id}`">{{ item.title.russianTitle || item.title.originalTitle }}</RouterLink>
         <div class="meta">{{ buildMeta(item) }}</div>
         <Dropdown
           v-model="item.status"
           :options="statuses"
           optionLabel="label"
           optionValue="value"
-          @change="(e) => changeStatus(item, e.value)"
+          @change="(e: DropdownChangeEvent) => changeStatus(item, e.value as TitleStatus)"
         />
       </div>
     </div>
@@ -26,10 +26,11 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-import Dropdown from 'primevue/dropdown';
+import { RouterLink } from 'vue-router';
+import Dropdown, { type DropdownChangeEvent } from 'primevue/dropdown';
 import Skeleton from 'primevue/skeleton';
 import { useToast } from 'primevue/usetoast';
-import { TitleStatus, UserTitleStateResponse } from '../../api/types';
+import type { TitleStatus, UserTitleStateResponse } from '../../api/types';
 import { listUserTitles, updateUserTitle } from '../../api/userTitles';
 
 const statuses = [

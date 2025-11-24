@@ -117,6 +117,7 @@ model RecommendationSession {
 
   user    User   @relation(fields: [userId], references: [id])
   items   RecommendationItem[]
+  feedbackEvents FeedbackEvent[]
 }
 
 model RecommendationItem {

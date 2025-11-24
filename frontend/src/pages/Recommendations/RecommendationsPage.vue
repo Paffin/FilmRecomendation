@@ -59,7 +59,7 @@ import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
 import { fetchRecommendations, sendRecommendationFeedback } from '../../api/recommendations';
 import { createUserTitle } from '../../api/userTitles';
-import { ApiTitle, MediaType } from '../../api/types';
+import type { ApiTitle, MediaType } from '../../api/types';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 

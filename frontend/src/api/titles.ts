@@ -1,5 +1,5 @@
 import api from './client';
-import { MediaType } from './types';
+import type { MediaType } from './types';
 
 export interface TmdbSearchResult {
   id: number;

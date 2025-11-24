@@ -4,17 +4,21 @@
       <h2 class="section-title">История просмотра</h2>
       <Dropdown v-model="period" :options="periods" optionLabel="label" optionValue="value" />
     </div>
-    <div class="list">
-      <div v-for="item in history" :key="item.id" class="surface-card row">
+    <div class="list" v-if="loading">
+      <Skeleton v-for="i in 4" :key="i" height="90px" borderRadius="14px" />
+    </div>
+    <div class="list" v-else>
+      <div v-if="filteredHistory.length === 0" class="empty">Пока нет просмотренных тайтлов за выбранный период.</div>
+      <div v-else v-for="item in filteredHistory" :key="item.id" class="surface-card row">
         <div>
-          <div class="title">{{ item.title }}</div>
-          <div class="meta">{{ item.date }} · {{ item.meta }}</div>
+          <div class="title">{{ item.title.russianTitle || item.title.originalTitle }}</div>
+          <div class="meta">{{ formatDate(item.lastInteractionAt) }} · {{ meta(item) }}</div>
         </div>
         <div class="actions">
-          <Rating v-model="item.rating" :cancel="false" />
+          <Rating :modelValue="item.rating ?? 0" :cancel="false" @update:modelValue="(v) => changeRating(item, v)" />
           <div class="buttons">
-            <Button icon="pi pi-thumbs-up" text severity="success" />
-            <Button icon="pi pi-thumbs-down" text severity="danger" />
+            <Button icon="pi pi-thumbs-up" text severity="success" :outlined="!item.liked" @click="() => like(item)" />
+            <Button icon="pi pi-thumbs-down" text severity="danger" :outlined="!item.disliked" @click="() => dislike(item)" />
           </div>
         </div>
       </div>
@@ -23,27 +27,80 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import Rating from 'primevue/rating';
 import Button from 'primevue/button';
+import Skeleton from 'primevue/skeleton';
+import { useToast } from 'primevue/usetoast';
+import { getHistory } from '../../api/analytics';
+import { updateUserTitle } from '../../api/userTitles';
+import type { UserTitleStateResponse } from '../../api/types';
 
 const periods = [
-  { label: '30 дней', value: '30' },
-  { label: '90 дней', value: '90' },
-  { label: 'Год', value: '365' },
+  { label: '30 дней', value: 30 },
+  { label: '90 дней', value: 90 },
+  { label: 'Год', value: 365 },
 ];
 
-const period = ref('90');
-const history = reactive(
-  Array.from({ length: 5 }, (_, i) => ({
-    id: i,
-    title: `Просмотренный тайтл ${i + 1}`,
-    meta: 'драма · 2022',
-    rating: 8,
-    date: '2024-11-01',
-  })),
-);
+const period = ref(90);
+const history = ref<UserTitleStateResponse[]>([]);
+const loading = ref(true);
+const toast = useToast();
+
+onMounted(async () => {
+  try {
+    history.value = await getHistory();
+  } finally {
+    loading.value = false;
+  }
+});
+
+const filteredHistory = computed(() => {
+  const days = period.value;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return history.value.filter((h) => new Date(h.lastInteractionAt).getTime() >= cutoff);
+});
+
+const meta = (item: UserTitleStateResponse) => {
+  const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
+  const genres = item.title.genres?.slice(0, 2).join(', ');
+  return [year, genres].filter(Boolean).join(' · ');
+};
+
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU');
+
+const changeRating = async (item: UserTitleStateResponse, rating: number) => {
+  try {
+    const updated = await updateUserTitle(item.id, { rating: rating ?? null });
+    replaceItem(updated);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Не удалось сохранить', life: 2500 });
+  }
+};
+
+const like = async (item: UserTitleStateResponse) => {
+  try {
+    const updated = await updateUserTitle(item.id, { liked: !item.liked, disliked: false });
+    replaceItem(updated);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось обновить лайк', life: 2500 });
+  }
+};
+
+const dislike = async (item: UserTitleStateResponse) => {
+  try {
+    const updated = await updateUserTitle(item.id, { disliked: !item.disliked, liked: false, status: 'dropped' });
+    replaceItem(updated);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось обновить дизлайк', life: 2500 });
+  }
+};
+
+const replaceItem = (updated: UserTitleStateResponse) => {
+  const idx = history.value.findIndex((h) => h.id === updated.id);
+  if (idx >= 0) history.value[idx] = updated;
+};
 </script>
 
 <style scoped>
@@ -69,4 +126,6 @@ const history = reactive(
 .meta { color: var(--text-secondary); }
 .actions { display: flex; align-items: center; gap: 12px; }
 .buttons { display: flex; gap: 6px; }
+.empty { color: var(--text-secondary); }
+@media (max-width: 720px) { .row { flex-direction: column; align-items: flex-start; gap: 10px; } }
 </style>

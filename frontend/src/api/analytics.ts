@@ -1,5 +1,5 @@
 import api from './client';
-import { UserTitleStateResponse } from './types';
+import type { UserTitleStateResponse } from './types';
 
 export interface OverviewResponse {
   watchedCount: number;

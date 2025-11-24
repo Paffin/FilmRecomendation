@@ -1,5 +1,5 @@
 import api from './client';
-import { RecommendationResponse } from './types';
+import type { RecommendationResponse } from './types';
 
 export interface RecommendationQuery {
   limit?: number;

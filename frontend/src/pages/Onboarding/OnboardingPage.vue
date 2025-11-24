@@ -53,7 +53,7 @@ import Skeleton from 'primevue/skeleton';
 import { useRouter } from 'vue-router';
 import TitleCard from '../../components/common/TitleCard.vue';
 import { useToast } from 'primevue/usetoast';
-import { MediaType } from '../../api/types';
+import type { MediaType } from '../../api/types';
 import { searchTitles } from '../../api/titles';
 import { createUserTitle } from '../../api/userTitles';
 import { completeOnboarding } from '../../api/users';

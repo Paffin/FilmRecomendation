@@ -3,7 +3,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { RecommendationEngine, RecommendationContext } from './recommendation.engine';
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
-import { FeedbackContext, TitleStatus } from '@prisma/client';
+import { FeedbackContext, TitleStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class RecommendationsService {
@@ -21,7 +21,7 @@ export class RecommendationsService {
     const session = await this.prisma.recommendationSession.create({
       data: {
         userId,
-        context,
+        context: context as Prisma.InputJsonObject,
       },
     });
 

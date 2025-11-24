@@ -1,5 +1,5 @@
 import api from './client';
-import { MediaType, TitleStatus, TitleSource, UserTitleStateResponse } from './types';
+import type { MediaType, TitleStatus, TitleSource, UserTitleStateResponse } from './types';
 
 export async function listUserTitles(params: { status?: TitleStatus; mediaType?: MediaType } = {}) {
   const { data } = await api.get<UserTitleStateResponse[]>('/user-titles', { params });
