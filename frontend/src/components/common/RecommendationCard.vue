@@ -7,8 +7,11 @@
     <div class="content">
       <div class="title-row">
         <div class="title">{{ title }}</div>
-        <div v-if="meta" class="meta">{{ meta }}</div>
-        <div v-if="secondaryMeta" class="meta subtle">{{ secondaryMeta }}</div>
+        <div class="meta-block">
+          <div v-if="meta" class="meta">{{ meta }}</div>
+          <div v-if="secondaryMeta" class="meta subtle">{{ secondaryMeta }}</div>
+          <span v-if="statusLabel" class="status-label">{{ statusLabel }}</span>
+        </div>
       </div>
       <div v-if="tags?.length" class="chips">
         <Tag v-for="tag in tags" :key="tag" :value="tag" severity="info" />
@@ -22,6 +25,14 @@
       <div class="actions">
         <Button icon="pi pi-eye" :label="t('recommendations.more')" text @click="$emit('details')" />
         <span class="spacer" />
+        <Button
+          v-if="canAddToWatchlist"
+          icon="pi pi-bookmark"
+          :label="t('recommendations.toWatchlist')"
+          :disabled="busy"
+          text
+          @click="$emit('add-to-watchlist')"
+        />
         <Button
           icon="pi pi-check-circle"
           :label="t('recommendations.watched')"
@@ -57,6 +68,8 @@ interface Props {
   explanation?: string[];
   poster?: string | null;
   busy?: boolean;
+  statusLabel?: string;
+  canAddToWatchlist?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -122,6 +135,13 @@ const posterStyle = computed(() =>
   gap: 4px;
 }
 
+.meta-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
 .title {
   font-weight: 700;
   font-size: 20px;
@@ -134,6 +154,16 @@ const posterStyle = computed(() =>
 .meta.subtle {
   opacity: 0.8;
   font-size: 13px;
+}
+
+.status-label {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(138, 180, 255, 0.16);
+  border: 1px solid rgba(138, 180, 255, 0.45);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .chips {

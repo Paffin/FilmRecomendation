@@ -31,6 +31,12 @@
       <div v-else class="stats">
         <Skeleton v-for="i in 6" :key="i" height="48px" border-radius="14px" />
       </div>
+      <div v-if="!loading && overview && insights.length" class="insights">
+        <h3 class="insights-title">{{ t('profile.insights') }}</h3>
+        <ul>
+          <li v-for="line in insights" :key="line">{{ line }}</li>
+        </ul>
+      </div>
     </div>
 
     <div class="surface-card">
@@ -38,12 +44,18 @@
       <div v-if="loading" class="chart-skeleton">
         <Skeleton height="280px" border-radius="14px" />
       </div>
-      <Radar
-        v-else-if="taste"
-        :data="tasteRadarData"
-        :options="{ scales: { r: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { display: false } } } }"
-      />
-      <div v-else class="empty">Нет данных — отметьте просмотренные тайтлы</div>
+      <div v-else>
+        <Radar
+          v-if="taste"
+          :data="tasteRadarData"
+          :options="{ scales: { r: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { display: false } } } }"
+        />
+        <div v-else class="empty">Нет данных — отметьте просмотренные тайтлы</div>
+        <p v-if="taste" class="taste-caption">
+          Чем выше значение по лучу, тем сильнее выражен ваш интерес к жанру. Карта строится по вашим лайкам и
+          отметкам «Смотрел».
+        </p>
+      </div>
     </div>
 
     <div class="surface-card">
@@ -203,6 +215,40 @@ const doughnutOptions: ChartOptions<'doughnut'> = {
   plugins: { legend: { position: 'bottom', labels: { color: '#cfd3e4' } } },
 };
 
+const insights = computed(() => {
+  if (!overview.value) return [] as string[];
+  const lines: string[] = [];
+
+  const typeEntries = Object.entries(overview.value.byType ?? {}).filter(([, v]) => v > 0);
+  if (typeEntries.length) {
+    const topEntry = typeEntries.sort((a, b) => b[1] - a[1])[0] as [string, number];
+    const [topType] = topEntry;
+    const typeLabel =
+      topType === 'movie'
+        ? 'фильмы'
+        : topType === 'tv'
+          ? 'сериалы'
+          : topType === 'anime'
+            ? 'аниме'
+            : 'мультфильмы';
+    lines.push(`Чаще всего вы смотрите ${typeLabel}.`);
+  }
+
+  if (overview.value.topGenre) {
+    lines.push(`Ваш любимый жанр — «${overview.value.topGenre}».`);
+  }
+
+  if (overview.value.topCountry) {
+    lines.push(`Чаще всего вы выбираете тайтлы из страны ${overview.value.topCountry}.`);
+  }
+
+  if (overview.value.averageRating) {
+    lines.push(`Ваша средняя оценка — ${overview.value.averageRating.toFixed(1)}.`);
+  }
+
+  return lines;
+});
+
 </script>
 
 <style scoped>
@@ -233,6 +279,22 @@ const doughnutOptions: ChartOptions<'doughnut'> = {
   color: var(--text-secondary);
 }
 
+.insights {
+  margin-top: 14px;
+}
+
+.insights-title {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.insights ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .chart-skeleton {
   display: grid;
   gap: 10px;
@@ -257,5 +319,11 @@ const doughnutOptions: ChartOptions<'doughnut'> = {
 
 .anti-title {
   font-weight: 500;
+}
+
+.taste-caption {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 </style>

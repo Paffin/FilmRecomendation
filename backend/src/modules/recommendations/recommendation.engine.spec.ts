@@ -24,6 +24,7 @@ const baseTitle = (overrides: Partial<Title>): Title => ({
 });
 
 const profileStub = () => ({
+  schemaVersion: 2,
   genrePositive: {},
   genreNegative: {},
   countryWeights: {},

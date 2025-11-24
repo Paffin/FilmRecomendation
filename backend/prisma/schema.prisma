@@ -35,6 +35,11 @@ enum FeedbackContext {
   onboarding
 }
 
+enum CatalogSnapshotKind {
+  trending
+  popular
+}
+
 model User {
   id                   String   @id @default(uuid())
   email                String   @unique
@@ -145,6 +150,20 @@ model UserTasteProfile {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
+}
+
+model CatalogSnapshot {
+  id           String             @id @default(uuid())
+  tmdbId       Int
+  mediaType    MediaType
+  kind         CatalogSnapshotKind
+  score        Float?
+  snapshotDate DateTime           @default(now())
+  createdAt    DateTime           @default(now())
+
+  @@index([kind, snapshotDate])
+  @@index([mediaType, kind, snapshotDate])
+  @@index([tmdbId, mediaType])
 }
 
 model RefreshToken {

@@ -4,6 +4,7 @@ import { RecommendationEngine, RecommendationContext } from './recommendation.en
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
 import { FeedbackContext, TitleStatus, Prisma } from '@prisma/client';
+import { pickVariantForUser } from './recommendation.config';
 
 @Injectable()
 export class RecommendationsService {
@@ -23,11 +24,12 @@ export class RecommendationsService {
       pace: query.pace,
       freshness: query.freshness,
     };
+    const variant = pickVariantForUser(userId);
 
     const session = await this.prisma.recommendationSession.create({
       data: {
         userId,
-        context: context as Prisma.InputJsonObject,
+        context: { ...context, variant } as Prisma.InputJsonObject,
       },
     });
 
@@ -35,6 +37,14 @@ export class RecommendationsService {
     const recs = recsRaw.filter(
       (r, idx, arr) => arr.findIndex((i) => i.title.id === r.title.id) === idx,
     );
+
+    const titleIds = recs.map((r) => r.title.id);
+    const states = titleIds.length
+      ? await this.prisma.userTitleState.findMany({
+          where: { userId, titleId: { in: titleIds } },
+        })
+      : [];
+    const stateMap = new Map(states.map((s) => [s.titleId, s]));
 
     await this.prisma.$transaction(
       recs.map((rec, idx) =>
@@ -52,7 +62,20 @@ export class RecommendationsService {
 
     return {
       sessionId: session.id,
-      items: recs.map((r) => ({ title: r.title, explanation: r.explanation })),
+      items: recs.map((r) => {
+        const state = stateMap.get(r.title.id);
+        return {
+          title: r.title,
+          explanation: r.explanation,
+          userState: state
+            ? {
+                status: state.status,
+                liked: state.liked,
+                disliked: state.disliked,
+              }
+            : null,
+        };
+      }),
     };
   }
 

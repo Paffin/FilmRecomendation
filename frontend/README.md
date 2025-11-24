@@ -1,5 +1,48 @@
-# Vue 3 + TypeScript + Vite
+# КиноВкус — frontend (Vue 3 + PrimeVue)
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Этот пакет содержит одностраничное приложение КиноВкус:
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+- Vue 3 (Composition API, `<script setup>`) + TypeScript.
+- Vite в качестве сборщика.
+- PrimeVue + PrimeIcons для UI‑компонентов.
+- Pinia для стора, Vue Router для роутинга.
+- Chart.js (через `vue-chartjs`) для графиков «карты вкуса».
+
+## Основные страницы
+
+- **Auth** — логин/регистрация (через backend `/auth`).
+- **Onboarding** — трёхшаговый онбординг:
+  1. Выбор типов контента.
+  2. Отметка «Смотрел» для ≥10 тайтлов (поиск через backend `/titles`).
+  3. Лайк/дизлайк хотя бы 5 просмотренных тайтлов.
+- **Recommendations** — экран рекомендаций:
+  - Контекст «режим вечера» (настроение, компания, время, новизна, темп, свежесть).
+  - 5 карточек с лайком, дизлайком, кнопкой «Смотрел» и объяснением «Почему в рекомендациях».
+  - Статус тайтла (в списке/смотрел/антисписок) и кнопка «В список».
+- **Watchlist** — список к просмотру со статусами + быстрые лайк/дизлайк и пометка антисписка.
+- **History** — история взаимодействий (фильтры по времени/жанрам/типу, редактирование статусов и оценок).
+- **Profile** — профиль и аналитика:
+  - KPI по просмотрам/лайкам/списку.
+  - «Карта вкуса» (radar) + графики жанров и стран.
+  - Антисписок с возможностью «Вернуть» тайтлы.
+
+## Запуск
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+По умолчанию приложение ожидает backend на `http://localhost:3000` и использует proxy `/api` (см. `vite.config.ts`).
+
+## Структура
+
+- `src/main.ts` — точка входа, инициализация i18n, Pinia и маршрутизатора.
+- `src/pages` — страницы (Auth, Onboarding, Recommendations, Watchlist, History, Profile, TitleDetails).
+- `src/components/common` — переиспользуемые компоненты (карточки тайтлов, карточка рекомендации и т.п.).
+- `src/api` — обёртки над backend API (`axios`).
+- `src/store` — Pinia‑модули (auth и др.).
+- `src/styles` — глобальные стили и тёмная тема поверх PrimeVue.
+
+Все тексты интерфейса — на русском, через `vue-i18n` (локаль `ru`).

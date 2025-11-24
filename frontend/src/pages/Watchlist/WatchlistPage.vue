@@ -17,13 +17,34 @@
           </div>
           <Button label="Подробнее" icon="pi pi-angle-right" text @click="openDetails(item.title.id)" />
         </div>
-        <Dropdown
-          v-model="item.status"
-          :options="statuses"
-          option-label="label"
-          option-value="value"
-          @change="(e: DropdownChangeEvent) => changeStatus(item, e.value as TitleStatus)"
-        />
+        <div class="status-row">
+          <Dropdown
+            v-model="item.status"
+            :options="statuses"
+            option-label="label"
+            option-value="value"
+            @change="(e: DropdownChangeEvent) => changeStatus(item, e.value as TitleStatus)"
+          />
+          <div class="like-controls">
+            <Button
+              icon="pi pi-thumbs-up"
+              text
+              rounded
+              :severity="item.liked ? 'success' : 'secondary'"
+              :outlined="!item.liked"
+              @click="toggleLike(item)"
+            />
+            <Button
+              icon="pi pi-thumbs-down"
+              text
+              rounded
+              :severity="item.disliked ? 'danger' : 'secondary'"
+              :outlined="!item.disliked"
+              @click="toggleDislike(item)"
+            />
+          </div>
+        </div>
+        <div v-if="item.disliked" class="anti-note">В антисписке — мы стараемся не предлагать похожие тайтлы</div>
       </div>
     </div>
   </div>
@@ -76,6 +97,44 @@ const changeStatus = async (item: UserTitleStateResponse, newStatus: TitleStatus
   }
 };
 
+const toggleLike = async (item: UserTitleStateResponse) => {
+  try {
+    const nextLiked = !item.liked;
+    const updated = await updateUserTitle(item.id, {
+      liked: nextLiked,
+      disliked: nextLiked ? false : item.disliked,
+    });
+    const idx = items.value.findIndex((i) => i.id === item.id);
+    if (idx >= 0) items.value[idx] = updated;
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось обновить оценку',
+      detail: 'Попробуйте ещё раз',
+      life: 4000,
+    });
+  }
+};
+
+const toggleDislike = async (item: UserTitleStateResponse) => {
+  try {
+    const nextDisliked = !item.disliked;
+    const updated = await updateUserTitle(item.id, {
+      disliked: nextDisliked,
+      liked: nextDisliked ? false : item.liked,
+    });
+    const idx = items.value.findIndex((i) => i.id === item.id);
+    if (idx >= 0) items.value[idx] = updated;
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось обновить антисписок',
+      detail: 'Попробуйте ещё раз',
+      life: 4000,
+    });
+  }
+};
+
 const buildMeta = (item: UserTitleStateResponse) => {
   const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
   return [year, item.title.genres?.slice(0, 2).join(', ')].filter(Boolean).join(' · ');
@@ -105,6 +164,24 @@ onMounted(load);
 }
 
 .meta {
+  color: var(--text-secondary);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.like-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.anti-note {
+  margin-top: 4px;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 

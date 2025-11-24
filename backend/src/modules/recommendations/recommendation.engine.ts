@@ -3,7 +3,35 @@ import { PrismaService } from '../../common/prisma.service';
 import { MediaType, Prisma, Title, UserTitleState } from '@prisma/client';
 import { TitlesService } from '../titles/titles.service';
 import { TmdbService } from '../tmdb/tmdb.service';
-import { weightVariants, WeightVariant } from './recommendation.config';
+import { pickVariantForUser, profileConfig, weightVariants } from './recommendation.config';
+
+export interface RecommendationSignals {
+  rating: number;
+  popularity: number;
+  freshness?: number;
+  similarity?: number;
+  runtimeFit?: number;
+  pace?: number;
+  mood?: number;
+  mindset?: number;
+  company?: number;
+  typePreference?: number;
+  novelty?: number;
+  diversity?: number;
+  anti?: number;
+  recency?: number;
+  runtime_bucket_short?: number;
+  runtime_bucket_medium?: number;
+  runtime_bucket_long?: number;
+  context_mood_light?: number;
+  context_mood_neutral?: number;
+  context_mood_heavy?: number;
+  context_company_solo?: number;
+  context_company_duo?: number;
+  context_company_friends?: number;
+  context_company_family?: number;
+  [key: string]: number | undefined;
+}
 
 export interface RecommendationContext {
   mood?: string;
@@ -18,7 +46,7 @@ export interface RecommendationContext {
 export interface RecommendationResultItem {
   title: Title;
   score: number;
-  signals: Record<string, number>;
+  signals: RecommendationSignals;
   explanation: string[];
 }
 
@@ -35,6 +63,7 @@ interface AnchorTitle {
 }
 
 interface TasteProfileData {
+  schemaVersion: number;
   genrePositive: Record<string, number>;
   genreNegative: Record<string, number>;
   countryWeights: Record<string, number>;
@@ -81,7 +110,8 @@ export class RecommendationEngine {
     limit: number,
     context: RecommendationContext,
   ): Promise<RecommendationResultItem[]> {
-    const variant = this.pickVariant(userId);
+    const startedAt = Date.now();
+    const variant = pickVariantForUser(userId);
     const weights = weightVariants[variant];
     const profile = await this.loadUserProfile(userId);
     const candidates = await this.buildCandidatePool(userId, profile, limit * 10, context);
@@ -92,6 +122,21 @@ export class RecommendationEngine {
       .sort((a, b) => b.score - a.score);
 
     const diversified = this.diversify(scored, limit);
+    const elapsedMs = Date.now() - startedAt;
+
+    if (diversified.length > 0) {
+      const topCount = Math.min(5, diversified.length);
+      const avgTopScore =
+        diversified.slice(0, topCount).reduce((sum, item) => sum + item.score, 0) / topCount;
+      this.logger.log(
+        `Recommendations generated: user=${userId}, variant=${variant}, limit=${limit}, candidates=${candidates.length}, topCount=${diversified.length}, avgTopScore=${avgTopScore.toFixed(3)}, tookMs=${elapsedMs}`,
+      );
+    } else {
+      this.logger.log(
+        `Recommendations generated: user=${userId}, variant=${variant}, limit=${limit}, candidates=${candidates.length}, topCount=0, tookMs=${elapsedMs}`,
+      );
+    }
+
     return diversified.map((item) => ({
       title: item.title,
       score: item.score,
@@ -110,7 +155,10 @@ export class RecommendationEngine {
     const latestInteraction = states[0]?.lastInteractionAt ?? new Date(0);
     const cached = await this.prisma.userTasteProfile.findUnique({ where: { userId } });
     if (cached && cached.updatedAt >= latestInteraction) {
-      return this.deserializeProfile(cached.data as unknown as TasteProfileData);
+      const cachedData = cached.data as unknown as Partial<TasteProfileData>;
+      if (cachedData.schemaVersion === 2) {
+        return this.deserializeProfile(cachedData as TasteProfileData);
+      }
     }
 
     const computed = this.computeProfile(states);
@@ -136,12 +184,21 @@ export class RecommendationEngine {
     const dislikedTitleIds: string[] = [];
     const seenTitleIds: string[] = [];
     const moodVector: Record<string, number> = { light: 0, neutral: 0, heavy: 0 };
+    const now = Date.now();
 
     states.forEach((state) => {
       const { title } = state;
       const liked = state.liked;
       const disliked = state.disliked || state.status === 'dropped';
-      const weight = liked ? 2.8 : disliked ? -3 : state.status === 'watched' ? 1.4 : 0.6;
+      const baseWeight = liked ? 2.8 : disliked ? -3 : state.status === 'watched' ? 1.4 : 0.6;
+
+      const daysAgo =
+        (now - state.lastInteractionAt.getTime()) / (1000 * 60 * 60 * 24);
+      const halfLife = profileConfig.recencyHalfLifeDays;
+      const recencyFactor =
+        halfLife > 0 ? Math.pow(0.5, daysAgo / halfLife) : 1;
+      const sourceFactor = profileConfig.sourceWeights[state.source] ?? 1;
+      const weight = baseWeight * recencyFactor * sourceFactor;
 
       if (liked) likedTitleIds.push(title.id);
       if (disliked) dislikedTitleIds.push(title.id);
@@ -213,6 +270,7 @@ export class RecommendationEngine {
       }));
 
     return {
+      schemaVersion: 2,
       genrePositive,
       genreNegative,
       countryWeights,
@@ -297,26 +355,70 @@ export class RecommendationEngine {
     // тренды
     const mediaTypes =
       profile.preferredTypes.size > 0 ? Array.from(profile.preferredTypes) : ['movie', 'tv'];
-    const trendPromises = mediaTypes.map((mt) => this.tmdb.trending(this.mapMediaType(mt)));
-    const trendResults = await Promise.all(trendPromises);
-    trendResults.forEach((res, idx) => {
-      (res?.results ?? []).slice(0, 15).forEach((r: any) => {
-        const resolvedType =
-          this.normalizeMediaType(r.media_type) ?? (mediaTypes[idx] as MediaType);
-        seeds.push({ tmdbId: r.id, mediaType: resolvedType });
+
+    for (const mt of mediaTypes) {
+      const mediaType = mt as MediaType;
+      const latestTrending = await this.prisma.catalogSnapshot.findFirst({
+        where: { mediaType, kind: 'trending' },
+        orderBy: { snapshotDate: 'desc' },
       });
-    });
+
+      if (latestTrending) {
+        const rows = await this.prisma.catalogSnapshot.findMany({
+          where: {
+            mediaType,
+            kind: 'trending',
+            snapshotDate: latestTrending.snapshotDate,
+          },
+          orderBy: [{ score: 'desc' }, { createdAt: 'desc' }],
+          take: 40,
+        });
+
+        rows.forEach((row) => {
+          seeds.push({ tmdbId: row.tmdbId, mediaType: row.mediaType });
+        });
+      } else {
+        const res = await this.tmdb.trending(this.mapMediaType(mediaType));
+        (res?.results ?? []).slice(0, 15).forEach((r: any) => {
+          const resolvedType =
+            this.normalizeMediaType(r.media_type) ?? (mediaType as MediaType);
+          seeds.push({ tmdbId: r.id, mediaType: resolvedType });
+        });
+      }
+    }
 
     // популярное как fallback
     if (context.freshness === 'classic') {
-      const popular = await Promise.all(
-        mediaTypes.map((mt) => this.tmdb.popular(this.mapMediaType(mt))),
-      );
-      popular.forEach((res, idx) => {
-        (res?.results ?? []).slice(0, 12).forEach((r: any) => {
-          seeds.push({ tmdbId: r.id, mediaType: mediaTypes[idx] as MediaType });
+      for (const mt of mediaTypes) {
+        const mediaType = mt as MediaType;
+        const latestPopular = await this.prisma.catalogSnapshot.findFirst({
+          where: { mediaType, kind: 'popular' },
+          orderBy: { snapshotDate: 'desc' },
         });
-      });
+
+        if (latestPopular) {
+          const rows = await this.prisma.catalogSnapshot.findMany({
+            where: {
+              mediaType,
+              kind: 'popular',
+              snapshotDate: latestPopular.snapshotDate,
+            },
+            orderBy: [{ score: 'desc' }, { createdAt: 'desc' }],
+            take: 30,
+          });
+
+          rows.forEach((row) => {
+            seeds.push({ tmdbId: row.tmdbId, mediaType: row.mediaType });
+          });
+        } else {
+          const res = await this.tmdb.popular(this.mapMediaType(mediaType));
+          (res?.results ?? []).slice(0, 12).forEach((r: any) => {
+            const resolvedType =
+              this.normalizeMediaType(r.media_type) ?? (mediaType as MediaType);
+            seeds.push({ tmdbId: r.id, mediaType: resolvedType });
+          });
+        }
+      }
     }
 
     const local = await this.prisma.title.findMany({
@@ -367,7 +469,10 @@ export class RecommendationEngine {
     context: RecommendationContext,
     weights: (typeof weightVariants)['A'],
   ) {
-    const signals: Record<string, number> = {};
+    const signals: RecommendationSignals = {
+      rating: 0,
+      popularity: 0,
+    };
     const reasons: Set<string> = new Set();
     let score = 0;
 
@@ -414,6 +519,7 @@ export class RecommendationEngine {
       const freshness = Math.max(0, 1 - (currentYear - year) / 40);
       signals.freshness = freshness;
       const recency = profile.freshnessTilt * 0.6 + freshness * 0.4;
+      signals.recency = recency;
       score +=
         decadeWeight * weights.decade + recency * weights.recency + freshness * weights.freshness;
       if (freshness > 0.7 && (context.freshness ?? 'any') !== 'classic')
@@ -455,6 +561,13 @@ export class RecommendationEngine {
       signals.runtimeFit = runtimeScore;
       score += runtimeScore * weights.runtime;
 
+      const short = title.runtime < 85 ? 1 : 0;
+      const medium = title.runtime >= 85 && title.runtime <= 130 ? 1 : 0;
+      const long = title.runtime > 130 ? 1 : 0;
+      signals.runtime_bucket_short = short;
+      signals.runtime_bucket_medium = medium;
+      signals.runtime_bucket_long = long;
+
       const pace = context.pace ?? 'balanced';
       const paceScore =
         pace === 'calm'
@@ -479,6 +592,9 @@ export class RecommendationEngine {
       score += moodBoost * weights.mood;
       reasons.add('Соответствует выбранному настроению');
     }
+    signals.context_mood_light = context.mood === 'light' ? 1 : 0;
+    signals.context_mood_neutral = context.mood === 'neutral' ? 1 : 0;
+    signals.context_mood_heavy = context.mood === 'heavy' ? 1 : 0;
 
     const mindsetBoost = this.mapMindsetBoost(context.mindset, ratingScore);
     signals.mindset = mindsetBoost;
@@ -487,6 +603,10 @@ export class RecommendationEngine {
     const companyPenalty = this.companyPenalty(context.company, raw);
     signals.company = companyPenalty;
     score += companyPenalty * weights.company;
+    signals.context_company_solo = !context.company || context.company === 'solo' ? 1 : 0;
+    signals.context_company_duo = context.company === 'duo' ? 1 : 0;
+    signals.context_company_friends = context.company === 'friends' ? 1 : 0;
+    signals.context_company_family = context.company === 'family' ? 1 : 0;
 
     // тип и новизна
     const typePref = profile.preferredTypes.has(title.mediaType) ? 1 : 0.65;
@@ -521,7 +641,7 @@ export class RecommendationEngine {
   }
 
   private diversify(
-    items: { title: Title; score: number; signals: Record<string, number>; reasons: string[] }[],
+    items: { title: Title; score: number; signals: RecommendationSignals; reasons: string[] }[],
     limit: number,
   ) {
     const picked: typeof items = [];
@@ -545,12 +665,44 @@ export class RecommendationEngine {
   }
 
   private buildExplanation(
-    item: { title: Title; score: number; signals: Record<string, number>; reasons: string[] },
+    item: { title: Title; score: number; signals: RecommendationSignals; reasons: string[] },
     profile: UserTasteProfile,
     context: RecommendationContext,
   ) {
     const reasons = new Set<string>(item.reasons);
     const year = item.title.releaseDate?.getFullYear();
+
+    if (reasons.size < 4) {
+      const sortedSignals = Object.entries(item.signals)
+        .filter(([, value]) => typeof value === 'number' && !Number.isNaN(value))
+        .sort((a, b) => Math.abs((b[1] as number) ?? 0) - Math.abs((a[1] as number) ?? 0));
+
+      for (const [key, value] of sortedSignals) {
+        if (reasons.size >= 4) break;
+        if (Math.abs((value as number) ?? 0) < 0.35) continue;
+
+        if (key.startsWith('genre:') && !Array.from(reasons).some((r) => r.includes('жанр'))) {
+          const genreName = key.replace('genre:', '');
+          reasons.add(`Сильно совпадает по жанру «${genreName}»`);
+          continue;
+        }
+
+        if (key === 'similarity' && (value as number) > 0.2) {
+          reasons.add('Похоже на ваши любимые тайтлы');
+          continue;
+        }
+
+        if (key === 'runtimeFit' && (value as number) > 0.6) {
+          reasons.add('Хорошо укладывается во время, которое вы обычно выделяете');
+          continue;
+        }
+
+        if (key === 'novelty' && (value as number) > 0.3) {
+          reasons.add('Добавляет новизну, не выходя за рамки вашего вкуса');
+          continue;
+        }
+      }
+    }
 
     if (!reasons.size && item.title.tmdbRating) {
       reasons.add(`Оценка TMDB ${item.title.tmdbRating.toFixed(1)} — выше среднего`);
@@ -656,8 +808,4 @@ export class RecommendationEngine {
     }
   }
 
-  private pickVariant(userId: string): WeightVariant {
-    const hash = Array.from(userId).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-    return hash % 2 === 0 ? 'A' : 'B';
-  }
 }

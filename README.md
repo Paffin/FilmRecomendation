@@ -54,7 +54,7 @@ docker compose -f infra/docker-compose.yml up --build
 
 ## TODO / Следующие шаги
 
-- Расширить RecommendationEngine (100+ сигналов, TMDB кандидаты, rerank)
-- Реализовать реальные вызовы API во фронте и стейты (Pinia)
-- Добавить e2e тесты (Playwright/Cypress)
-- Настроить Husky и линты на pre-commit
+- Доработать RecommendationEngine: multi‑profile по контексту (evening_solo / family и т.п.), дополнительные сезонные/временные сигналы.
+- Добавить e2e‑тесты (Playwright/Cypress) для основного сценария (регистрация → онбординг → рекомендации → список/история).
+- Улучшить mobile‑layout: нижний таб‑бар, компактные контролы в истории.
+- Настроить Husky и линты на pre-commit (hook `lint` + `test` для критических модулей).

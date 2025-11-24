@@ -21,9 +21,16 @@ export interface ApiTitle {
   originalLanguage: string;
 }
 
+export interface RecommendationUserState {
+  status: TitleStatus | null;
+  liked: boolean;
+  disliked: boolean;
+}
+
 export interface RecommendationItemResponse {
   title: ApiTitle;
   explanation: string[];
+  userState?: RecommendationUserState | null;
 }
 
 export interface RecommendationResponse {

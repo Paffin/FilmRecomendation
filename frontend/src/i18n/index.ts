@@ -18,6 +18,7 @@ const messages = {
       pace: 'Темп',
       freshness: 'Свежесть',
       like: 'Нравится',
+      toWatchlist: 'В список',
       dislike: 'Не подходит',
       watched: 'Смотрел',
       more: 'Подробнее',

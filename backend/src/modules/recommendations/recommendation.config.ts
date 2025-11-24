@@ -1,3 +1,5 @@
+import type { TitleSource } from '@prisma/client';
+
 export type WeightVariant = 'A' | 'B';
 
 export interface RecommendationWeights {
@@ -65,4 +67,31 @@ export const weightVariants: Record<WeightVariant, RecommendationWeights> = {
     recency: 0.08,
     contextPace: 0.06,
   },
+};
+
+export interface ProfileConfig {
+  recencyHalfLifeDays: number;
+  sourceWeights: Record<TitleSource, number>;
+}
+
+export const profileConfig: ProfileConfig = {
+  recencyHalfLifeDays: 180,
+  sourceWeights: {
+    onboarding: 0.7,
+    recommendation: 1,
+    search: 0.9,
+    manual: 1,
+  },
+};
+
+type VariantMode = 'ab' | 'forceA' | 'forceB';
+
+export const pickVariantForUser = (userId: string): WeightVariant => {
+  const mode = (process.env.RECOMMENDATION_EXPERIMENT_MODE as VariantMode | undefined) ?? 'ab';
+
+  if (mode === 'forceA') return 'A';
+  if (mode === 'forceB') return 'B';
+
+  const hash = Array.from(userId).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return hash % 2 === 0 ? 'A' : 'B';
 };

@@ -8,28 +8,54 @@
         <div class="title" @click="$emit('details', title)">{{ title.name }}</div>
         <div class="meta">{{ [title.year, title.genres?.join(', ')].filter(Boolean).join(' · ') }}</div>
         <div class="actions">
-          <Button
-            icon="pi pi-thumbs-up"
-            :label="title.selected ? 'Убрать' : 'Нравится'"
-            :severity="title.selected ? 'secondary' : 'success'"
-            size="small"
-            @click.stop="$emit('mark', title)"
-          />
-          <Button
-            icon="pi pi-thumbs-down"
-            :label="title.disliked ? 'Отменить дизлайк' : 'Не нравится'"
-            :outlined="!title.disliked"
-            severity="danger"
-            size="small"
-            @click.stop="$emit('dislike', title)"
-          />
-          <Button
-            icon="pi pi-eye"
-            label="Подробнее"
-            text
-            size="small"
-            @click.stop="$emit('details', title)"
-          />
+          <template v-if="mode === 'like'">
+            <Button
+              icon="pi pi-thumbs-up"
+              :label="title.selected ? 'Убрать' : 'Нравится'"
+              :severity="title.selected ? 'secondary' : 'success'"
+              size="small"
+              @click.stop="$emit('mark', title)"
+            />
+            <Button
+              icon="pi pi-thumbs-down"
+              :label="title.disliked ? 'Отменить дизлайк' : 'Не нравится'"
+              :outlined="!title.disliked"
+              severity="danger"
+              size="small"
+              @click.stop="$emit('dislike', title)"
+            />
+            <Button
+              icon="pi pi-eye"
+              label="Подробнее"
+              text
+              size="small"
+              @click.stop="$emit('details', title)"
+            />
+          </template>
+          <template v-else>
+            <Button
+              icon="pi pi-check"
+              :label="title.selected ? 'Смотрел' : 'Смотрел'"
+              :severity="title.selected ? 'success' : 'secondary'"
+              size="small"
+              @click.stop="$emit('mark', title)"
+            />
+            <Button
+              icon="pi pi-times"
+              label="Не смотрел"
+              outlined
+              severity="secondary"
+              size="small"
+              @click.stop="$emit('dislike', title)"
+            />
+            <Button
+              icon="pi pi-eye"
+              label="Подробнее"
+              text
+              size="small"
+              @click.stop="$emit('details', title)"
+            />
+          </template>
         </div>
       </div>
     </div>
@@ -50,9 +76,12 @@ interface TitleCardProps {
     selected?: boolean;
     disliked?: boolean;
   };
+  mode?: 'like' | 'watched';
 }
 
-const props = defineProps<TitleCardProps>();
+const props = withDefaults(defineProps<TitleCardProps>(), {
+  mode: 'like',
+});
 
 const posterStyle = computed(() =>
   props.title.poster

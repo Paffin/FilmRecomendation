@@ -62,11 +62,14 @@
         :tags="item.tags"
         :poster="item.poster"
         :explanation="item.explanation"
+        :status-label="item.statusLabel"
+        :can-add-to-watchlist="item.canAddToWatchlist"
         :busy="actionLoading === item.id"
         @like="like(item)"
         @watched="watched(item)"
         @dislike="dislike(item)"
         @details="openDetails(item)"
+        @add-to-watchlist="addToWatchlist(item)"
       />
     </TransitionGroup>
   </div>
@@ -83,7 +86,8 @@ import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
 import { fetchRecommendations, sendRecommendationFeedback } from '../../api/recommendations';
-import type { ApiTitle, MediaType } from '../../api/types';
+import type { ApiTitle, MediaType, RecommendationItemResponse, TitleStatus } from '../../api/types';
+import { createUserTitle } from '../../api/userTitles';
 import { useI18n } from 'vue-i18n';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
@@ -94,10 +98,12 @@ interface RecCard {
   mediaType: MediaType;
   displayTitle: string;
   meta: string;
-   secondaryMeta: string;
+  secondaryMeta: string;
   tags: string[];
   poster: string | null;
   explanation: string[];
+  statusLabel?: string;
+  canAddToWatchlist: boolean;
 }
 
 const recommendations = ref<RecCard[]>([]);
@@ -158,7 +164,7 @@ const contextTags = computed(() => [
   freshnessOptions.find((f) => f.value === freshness.value)?.label ?? '',
 ].filter(Boolean));
 
-const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard => {
+const mapToCard = (item: RecommendationItemResponse): RecCard => {
   const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
   const metaParts: string[] = [];
   if (year) metaParts.push(String(year));
@@ -167,6 +173,19 @@ const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard =>
   const secondary = [item.title.countries?.slice(0, 2).join(', '), item.title.runtime ? `${item.title.runtime} мин` : null]
     .filter(Boolean)
     .join(' · ');
+
+  const status = item.userState?.status ?? null;
+  const liked = item.userState?.liked ?? false;
+  const disliked = item.userState?.disliked ?? false;
+
+  const statusLabel = buildStatusLabel(status, liked, disliked);
+  const canAddToWatchlist =
+    !item.userState ||
+    (!liked &&
+      !disliked &&
+      status !== ('planned' as TitleStatus) &&
+      status !== ('watching' as TitleStatus) &&
+      status !== ('watched' as TitleStatus));
 
   return {
     id: item.title.id,
@@ -178,6 +197,8 @@ const mapToCard = (item: { title: ApiTitle; explanation: string[] }): RecCard =>
     tags: buildTags(item.title),
     poster: item.title.posterPath ? `${TMDB_IMAGE_BASE}${item.title.posterPath}` : null,
     explanation: item.explanation,
+    statusLabel,
+    canAddToWatchlist,
   };
 };
 
@@ -187,6 +208,14 @@ const buildTags = (title: ApiTitle) => {
   const country = title.countries?.[0];
   if (country) tags.push(country);
   return tags;
+};
+
+const buildStatusLabel = (status: TitleStatus | null, liked: boolean, disliked: boolean): string | undefined => {
+  if (disliked || status === 'dropped') return 'В антисписке';
+  if (status === 'watched') return 'Смотрел';
+  if (status === 'watching') return 'Смотрю';
+  if (status === 'planned' || liked) return 'В списке';
+  return undefined;
 };
 
 const load = async () => {
@@ -306,6 +335,42 @@ const dislike = async (item: RecCard) => {
     if (recommendations.value.length === 0) await load();
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Не удалось обновить', detail: 'Попробуйте ещё раз', life: 4000 });
+  } finally {
+    actionLoading.value = null;
+  }
+};
+
+const addToWatchlist = async (item: RecCard) => {
+  actionLoading.value = item.id;
+  try {
+    await createUserTitle({
+      tmdbId: item.tmdbId,
+      mediaType: item.mediaType,
+      status: 'planned',
+      source: 'recommendation',
+    });
+    recommendations.value = recommendations.value.map((rec) =>
+      rec.id === item.id
+        ? {
+            ...rec,
+            statusLabel: 'В списке',
+            canAddToWatchlist: false,
+          }
+        : rec,
+    );
+    toast.add({
+      severity: 'success',
+      summary: t('notifications.added'),
+      detail: t('notifications.savedToWatchlist'),
+      life: 2500,
+    });
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось сохранить',
+      detail: 'Попробуйте ещё раз',
+      life: 4000,
+    });
   } finally {
     actionLoading.value = null;
   }
