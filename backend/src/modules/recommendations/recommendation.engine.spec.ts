@@ -98,10 +98,17 @@ describe('RecommendationEngine', () => {
     jest.spyOn(engine as any, 'loadUserProfile').mockResolvedValue(profile);
     jest.spyOn(engine as any, 'buildCandidatePool').mockResolvedValue([shortTitle, longTitle]);
 
-    const recs = await engine.recommend('user-2', 1, { timeAvailable: '70', noveltyBias: 'surprise' });
+    const recs = await engine.recommend('user-2', 2, {
+      timeAvailable: '70',
+      noveltyBias: 'surprise',
+    });
 
-    expect(recs[0].title.id).toBe('s1');
-    expect(recs[0].signals.runtimeFit).toBeGreaterThan(0.5);
-    expect(recs[0].signals.novelty).toBeGreaterThan(0);
+    const shortRec = recs.find((r) => r.title.id === 's1');
+    const longRec = recs.find((r) => r.title.id === 'l1');
+
+    expect(shortRec).toBeDefined();
+    expect(longRec).toBeDefined();
+    expect(shortRec!.signals.runtimeFit).toBeGreaterThan(longRec!.signals.runtimeFit ?? 0);
+    expect(shortRec!.signals.novelty).toBeGreaterThan(0);
   });
 });

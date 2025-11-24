@@ -20,6 +20,9 @@ export interface RecommendationSignals {
   diversity?: number;
   anti?: number;
   recency?: number;
+  keywordMatch?: number;
+  collectionMatch?: number;
+  ageRatingFit?: number;
   runtime_bucket_short?: number;
   runtime_bucket_medium?: number;
   runtime_bucket_long?: number;
@@ -33,6 +36,15 @@ export interface RecommendationSignals {
   [key: string]: number | undefined;
 }
 
+export interface RecommendationOverrides {
+  genre?: number;
+  mood?: number;
+  novelty?: number;
+  decade?: number;
+  country?: number;
+  people?: number;
+}
+
 export interface RecommendationContext {
   mood?: string;
   mindset?: string;
@@ -41,6 +53,10 @@ export interface RecommendationContext {
   noveltyBias?: 'safe' | 'mix' | 'surprise';
   pace?: 'calm' | 'balanced' | 'dynamic';
   freshness?: 'trending' | 'classic' | 'any';
+  timeOfDay?: 'morning' | 'day' | 'evening' | 'late_night';
+  dayOfWeek?: 'weekday' | 'weekend';
+  diversityLevel?: 'soft' | 'balanced' | 'bold';
+  overrides?: RecommendationOverrides;
 }
 
 export interface RecommendationResultItem {
@@ -70,6 +86,9 @@ interface TasteProfileData {
   decadeWeights: Record<string, number>;
   languageWeights: Record<string, number>;
   peopleWeights: Record<string, number>;
+  keywordWeights: Record<string, number>;
+  collectionWeights: Record<string, number>;
+  ageRatingWeights: Record<string, number>;
   runtimeAvg: number | null;
   runtimeMedian: number | null;
   preferredTypes: MediaType[];
@@ -112,7 +131,27 @@ export class RecommendationEngine {
   ): Promise<RecommendationResultItem[]> {
     const startedAt = Date.now();
     const variant = pickVariantForUser(userId);
-    const weights = weightVariants[variant];
+    const baseWeights = weightVariants[variant];
+    const weights = { ...baseWeights };
+
+    if (context.overrides?.genre) {
+      weights.genre *= context.overrides.genre;
+    }
+    if (context.overrides?.mood) {
+      weights.mood *= context.overrides.mood;
+    }
+    if (context.overrides?.novelty) {
+      weights.novelty *= context.overrides.novelty;
+    }
+    if (context.overrides?.decade) {
+      weights.decade *= context.overrides.decade;
+    }
+    if (context.overrides?.country) {
+      weights.country *= context.overrides.country;
+    }
+    if (context.overrides?.people) {
+      weights.people *= context.overrides.people;
+    }
     const profile = await this.loadUserProfile(userId);
     const candidates = await this.buildCandidatePool(userId, profile, limit * 10, context);
 
@@ -121,20 +160,33 @@ export class RecommendationEngine {
       .map((title) => this.scoreCandidate(title, profile, context, weights))
       .sort((a, b) => b.score - a.score);
 
-    const diversified = this.diversify(scored, limit);
+    const diversified = this.diversify(scored, limit, context);
     const elapsedMs = Date.now() - startedAt;
 
     if (diversified.length > 0) {
       const topCount = Math.min(5, diversified.length);
       const avgTopScore =
         diversified.slice(0, topCount).reduce((sum, item) => sum + item.score, 0) / topCount;
-      this.logger.log(
-        `Recommendations generated: user=${userId}, variant=${variant}, limit=${limit}, candidates=${candidates.length}, topCount=${diversified.length}, avgTopScore=${avgTopScore.toFixed(3)}, tookMs=${elapsedMs}`,
-      );
+      this.logger.log({
+        msg: 'recommendations_generated',
+        userId,
+        variant,
+        limit,
+        candidateCount: candidates.length,
+        returnedCount: diversified.length,
+        avgTopScore: Number(avgTopScore.toFixed(3)),
+        tookMs: elapsedMs,
+      });
     } else {
-      this.logger.log(
-        `Recommendations generated: user=${userId}, variant=${variant}, limit=${limit}, candidates=${candidates.length}, topCount=0, tookMs=${elapsedMs}`,
-      );
+      this.logger.log({
+        msg: 'recommendations_generated',
+        userId,
+        variant,
+        limit,
+        candidateCount: candidates.length,
+        returnedCount: 0,
+        tookMs: elapsedMs,
+      });
     }
 
     return diversified.map((item) => ({
@@ -156,7 +208,7 @@ export class RecommendationEngine {
     const cached = await this.prisma.userTasteProfile.findUnique({ where: { userId } });
     if (cached && cached.updatedAt >= latestInteraction) {
       const cachedData = cached.data as unknown as Partial<TasteProfileData>;
-      if (cachedData.schemaVersion === 2) {
+      if (cachedData.schemaVersion === 3) {
         return this.deserializeProfile(cachedData as TasteProfileData);
       }
     }
@@ -178,6 +230,9 @@ export class RecommendationEngine {
     const decadeWeights: Record<string, number> = {};
     const languageWeights: Record<string, number> = {};
     const peopleWeights: Record<string, number> = {};
+    const keywordWeights: Record<string, number> = {};
+    const collectionWeights: Record<string, number> = {};
+    const ageRatingWeights: Record<string, number> = {};
     const runtimes: number[] = [];
     const preferredTypes = new Set<MediaType>();
     const likedTitleIds: string[] = [];
@@ -244,6 +299,18 @@ export class RecommendationEngine {
       });
 
       if (title.runtime) runtimes.push(title.runtime);
+
+      const { keywords, collectionName, ageRating } = this.extractExtraSignals(title);
+      keywords.forEach((keyword) => {
+        keywordWeights[keyword] = (keywordWeights[keyword] ?? 0) + weight;
+      });
+      if (collectionName) {
+        collectionWeights[collectionName] =
+          (collectionWeights[collectionName] ?? 0) + weight;
+      }
+      if (ageRating) {
+        ageRatingWeights[ageRating] = (ageRatingWeights[ageRating] ?? 0) + weight;
+      }
     });
 
     const runtimeAvg = runtimes.length
@@ -270,13 +337,16 @@ export class RecommendationEngine {
       }));
 
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       genrePositive,
       genreNegative,
       countryWeights,
       decadeWeights,
       languageWeights,
       peopleWeights,
+      keywordWeights,
+      collectionWeights,
+      ageRatingWeights,
       runtimeAvg,
       runtimeMedian,
       preferredTypes: Array.from(preferredTypes),
@@ -309,6 +379,56 @@ export class RecommendationEngine {
     if (!years.length) return 0;
     const avgYear = years.reduce((a, b) => a + b, 0) / years.length;
     return Math.max(-1, Math.min(1, (avgYear - 2012) / 15));
+  }
+
+  private extractExtraSignals(title: Title) {
+    const raw = (title.rawTmdbJson ?? {}) as any;
+
+    const keywordsRaw = raw?.keywords;
+    const keywordItems: any[] = Array.isArray(keywordsRaw)
+      ? keywordsRaw
+      : Array.isArray(keywordsRaw?.keywords)
+        ? keywordsRaw.keywords
+        : Array.isArray(keywordsRaw?.results)
+          ? keywordsRaw.results
+          : [];
+    const keywords: string[] = keywordItems
+      .map((k) => k?.name)
+      .filter((name: unknown): name is string => typeof name === 'string' && name.length > 0)
+      .slice(0, 16);
+
+    const collectionName: string | null =
+      typeof raw?.belongs_to_collection?.name === 'string'
+        ? (raw.belongs_to_collection.name as string)
+        : null;
+
+    let ageRating: string | null = null;
+    if (title.mediaType === 'movie') {
+      const releases: any[] = Array.isArray(raw?.release_dates?.results)
+        ? raw.release_dates.results
+        : [];
+      const ru = releases.find((r) => r?.iso_3166_1 === 'RU');
+      const us = releases.find((r) => r?.iso_3166_1 === 'US');
+      const base = ru ?? us ?? releases[0];
+      const certSource: any[] = Array.isArray(base?.release_dates) ? base.release_dates : [];
+      const cert = certSource.find((r) => typeof r?.certification === 'string')?.certification;
+      if (typeof cert === 'string' && cert.trim().length > 0) {
+        ageRating = cert.trim();
+      }
+    } else {
+      const ratings: any[] = Array.isArray(raw?.content_ratings?.results)
+        ? raw.content_ratings.results
+        : [];
+      const ru = ratings.find((r) => r?.iso_3166_1 === 'RU');
+      const us = ratings.find((r) => r?.iso_3166_1 === 'US');
+      const base = ru ?? us ?? ratings[0];
+      const cert = base?.rating;
+      if (typeof cert === 'string' && cert.trim().length > 0) {
+        ageRating = cert.trim();
+      }
+    }
+
+    return { keywords, collectionName, ageRating };
   }
 
   private cacheKey(userId: string, context: RecommendationContext, profileUpdatedAt: string) {
@@ -545,6 +665,54 @@ export class RecommendationEngine {
     });
     score += peopleScore * weights.people;
 
+    // keywords / коллекции / возрастной рейтинг
+    const { keywords, collectionName, ageRating } = this.extractExtraSignals(title);
+
+    if (keywords.length) {
+      let keywordScore = 0;
+      keywords.forEach((keyword) => {
+        const value = profile.keywordWeights[keyword] ?? 0;
+        if (!value) return;
+        signals[`keyword:${keyword}`] = value;
+        keywordScore += value;
+      });
+      if (keywordScore !== 0) {
+        signals.keywordMatch = keywordScore;
+        score += keywordScore * (weights.keyword ?? 0);
+        if (keywordScore > 1.5) {
+          reasons.add('Совпадает по скрытым тегам и темам, которые вам нравятся');
+        }
+      }
+    }
+
+    if (collectionName) {
+      const value = profile.collectionWeights[collectionName] ?? 0;
+      if (value !== 0) {
+        signals[`collection:${collectionName}`] = value;
+        signals.collectionMatch = value;
+        score += value * (weights.collection ?? 0);
+        if (value > 1.1) {
+          reasons.add(`Вы любите тайтлы из вселенной «${collectionName}»`);
+        }
+      }
+    }
+
+    if (ageRating) {
+      let ageScore = profile.ageRatingWeights[ageRating] ?? 0;
+      const isAdultRating =
+        ageRating.includes('18') ||
+        ageRating.toUpperCase() === 'R' ||
+        ageRating.toUpperCase() === 'NC-17' ||
+        raw?.adult === true;
+      if (context.company === 'family' && isAdultRating) {
+        ageScore -= 1.2;
+      }
+      if (ageScore !== 0) {
+        signals.ageRatingFit = ageScore;
+        score += ageScore * (weights.ageRating ?? 0);
+      }
+    }
+
     // схожесть с любимыми
     const similarity = this.anchorSimilarity(title, profile.anchorTitles ?? []);
     signals.similarity = similarity.score;
@@ -637,16 +805,49 @@ export class RecommendationEngine {
     signals.anti = antiScore;
     score += antiScore * weights.anti;
 
+    // время суток и день недели
+    if (context.timeOfDay || context.dayOfWeek) {
+      let timeScore = 0;
+      const isWeekend = context.dayOfWeek === 'weekend';
+      const isLateNight = context.timeOfDay === 'late_night' || context.timeOfDay === 'evening';
+
+      if (isLateNight && title.runtime && title.runtime <= 110) {
+        timeScore += 0.12;
+      }
+
+      const isAdult =
+        raw?.adult === true ||
+        (typeof raw?.release_dates === 'object' && String(raw.release_dates).includes('18+'));
+
+      if (isWeekend && context.company === 'family' && !isAdult) {
+        timeScore += 0.15;
+      }
+
+      if (timeScore !== 0) {
+        (signals as any).timeOfDay = timeScore;
+        score += timeScore * weights.runtime;
+        if (isLateNight && title.runtime && title.runtime <= 110) {
+          reasons.add('Подходит для позднего вечера по длительности');
+        }
+        if (isWeekend && context.company === 'family' && !isAdult) {
+          reasons.add('Семейный вариант на выходные без жёсткого контента');
+        }
+      }
+    }
+
     return { title, score, signals, reasons: Array.from(reasons) };
   }
 
   private diversify(
     items: { title: Title; score: number; signals: RecommendationSignals; reasons: string[] }[],
     limit: number,
+    context: RecommendationContext,
   ) {
     const picked: typeof items = [];
     const usedGenres = new Set<string>();
     const usedPeople = new Set<string>();
+    const level = context.diversityLevel ?? 'balanced';
+    const minIndexToEnforce = level === 'soft' ? 4 : level === 'bold' ? 2 : 3;
 
     for (const item of items) {
       if (picked.length >= limit) break;
@@ -654,14 +855,53 @@ export class RecommendationEngine {
       const peopleOverlap = this.extractPeople(item.title).mainPeople.some((p) =>
         usedPeople.has(p),
       );
-      if ((genreOverlap || peopleOverlap) && picked.length >= 3) continue;
+      if ((genreOverlap || peopleOverlap) && picked.length >= minIndexToEnforce) continue;
       picked.push(item);
       item.title.genres?.forEach((g) => usedGenres.add(g));
       this.extractPeople(item.title).mainPeople.forEach((p) => usedPeople.add(p));
     }
 
     if (picked.length < limit) picked.push(...items.slice(picked.length, limit));
-    return picked.slice(0, limit);
+
+    const base = picked.slice(0, limit);
+
+    // slot для «рискованной» рекомендации:
+    // стараемся подмешать один тайтл с высокой новизной, которого ещё нет в выдаче.
+    let bestNovelty = 0;
+    let bestNoveltyItem: (typeof items)[number] | null = null;
+    for (const item of items) {
+      const novelty = (item.signals.novelty ?? 0) as number;
+      if (novelty > 0.4 && novelty > bestNovelty && !base.some((b) => b.title.id === item.title.id)) {
+        bestNovelty = novelty;
+        bestNoveltyItem = item;
+      }
+    }
+
+    if (bestNoveltyItem && base.length > 0) {
+      base[base.length - 1] = bestNoveltyItem;
+    }
+
+    // дополнительный «экспериментальный» слот при высоком уровне диверсификации:
+    // выбираем тайтл с наибольшей диверсификацией, которого ещё нет в выдаче.
+    if (context.diversityLevel === 'bold' && base.length >= 3) {
+      let bestDiversity = 0;
+      let bestDiversityItem: (typeof items)[number] | null = null;
+      for (const item of items) {
+        const diversity = (item.signals.diversity ?? 0) as number;
+        if (
+          diversity > bestDiversity &&
+          !base.some((b) => b.title.id === item.title.id)
+        ) {
+          bestDiversity = diversity;
+          bestDiversityItem = item;
+        }
+      }
+      if (bestDiversityItem) {
+        base[2] = bestDiversityItem;
+      }
+    }
+
+    return base.slice(0, limit);
   }
 
   private buildExplanation(
@@ -702,6 +942,15 @@ export class RecommendationEngine {
           continue;
         }
       }
+    }
+
+    // подчёркиваем экспериментальные рекомендации, когда пользователь выбрал режим сюрпризов
+    if (
+      context.noveltyBias === 'surprise' &&
+      (item.signals.novelty ?? 0) !== undefined &&
+      (item.signals.novelty as number) > 0.35
+    ) {
+      reasons.add('Экспериментальный выбор под ваш запрос сюрпризов');
     }
 
     if (!reasons.size && item.title.tmdbRating) {

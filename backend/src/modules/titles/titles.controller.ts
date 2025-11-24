@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { TitlesService } from './titles.service';
 import { MediaType } from '@prisma/client';
+import { mapTitleToApi } from './title.mapper';
 
 @Controller('titles')
 export class TitlesController {
@@ -15,8 +16,12 @@ export class TitlesController {
   }
 
   @Get('tmdb/:tmdbId')
-  findByTmdb(@Param('tmdbId') tmdbId: string, @Query('mediaType') mediaType: MediaType) {
-    return this.service.getOrCreateFromTmdb(Number(tmdbId), mediaType);
+  async findByTmdb(
+    @Param('tmdbId') tmdbId: string,
+    @Query('mediaType') mediaType: MediaType,
+  ) {
+    const title = await this.service.getOrCreateFromTmdb(Number(tmdbId), mediaType);
+    return mapTitleToApi(title);
   }
 
   @Get('search')
@@ -29,8 +34,14 @@ export class TitlesController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const title = await this.service.findOne(id);
+    return mapTitleToApi(title);
+  }
+
+  @Get(':id/trailer')
+  trailer(@Param('id') id: string) {
+    return this.service.getTrailerForTitle(id);
   }
 
   @Get(':id/similar')

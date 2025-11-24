@@ -83,14 +83,82 @@
       </div>
       <div v-else class="empty">Вы ещё не добавляли тайтлы в антисписок</div>
     </div>
+
+    <div class="surface-card editor">
+      <h3 class="section-title">Эксперимент: ручка сигналов</h3>
+      <p class="editor-caption">
+        Поиграйте ползунками ниже — мы временно усилим или ослабим влияние групп сигналов и соберём подборку под ваши
+        настройки в реальном времени.
+      </p>
+      <div class="editor-grid">
+        <div class="editor-field">
+          <label>Жанры</label>
+          <Slider v-model="genreOverride" :min="0" :max="100" />
+          <small>{{ overrideLabel(genreOverride) }}</small>
+        </div>
+        <div class="editor-field">
+          <label>Настроение</label>
+          <Slider v-model="moodOverride" :min="0" :max="100" />
+          <small>{{ overrideLabel(moodOverride) }}</small>
+        </div>
+        <div class="editor-field">
+          <label>Новизна</label>
+          <Slider v-model="noveltyOverride" :min="0" :max="100" />
+          <small>{{ overrideLabel(noveltyOverride) }}</small>
+        </div>
+        <div class="editor-field">
+          <label>Десятилетия</label>
+          <Slider v-model="decadeOverride" :min="0" :max="100" />
+          <small>{{ overrideLabel(decadeOverride) }}</small>
+        </div>
+        <div class="editor-field">
+          <label>Страны</label>
+          <Slider v-model="countryOverride" :min="0" :max="100" />
+          <small>{{ overrideLabel(countryOverride) }}</small>
+        </div>
+        <div class="editor-field">
+          <label>Авторы и актёры</label>
+          <Slider v-model="peopleOverride" :min="0" :max="100" />
+          <small>{{ overrideLabel(peopleOverride) }}</small>
+        </div>
+      </div>
+      <div class="editor-actions">
+        <Button label="Обновить подборку" icon="pi pi-refresh" :loading="editorLoading" @click="loadEditorRecs" />
+      </div>
+      <div class="editor-list">
+        <Skeleton v-if="editorLoading && editorRecs.length === 0" height="200px" border-radius="14px" />
+        <div v-else-if="!editorLoading && editorRecs.length === 0" class="empty">
+          Нажмите «Обновить подборку», чтобы увидеть рекомендации под ручные настройки.
+        </div>
+        <RecommendationCard
+          v-for="item in editorRecs"
+          :key="item.id"
+          :title="item.displayTitle"
+          :meta="item.meta"
+          :secondary-meta="item.secondaryMeta"
+          :tags="item.tags"
+          :poster="item.poster"
+          :explanation="item.explanation"
+          :status-label="item.statusLabel"
+          :can-add-to-watchlist="item.canAddToWatchlist"
+          :busy="false"
+          @like="() => handleEditorLike(item)"
+          @watched="() => handleEditorWatched(item)"
+          @dislike="() => handleEditorDislike(item)"
+          @details="() => openEditorDetails(item)"
+          @add-to-watchlist="() => handleEditorAddToWatchlist(item)"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import Skeleton from 'primevue/skeleton';
 import Button from 'primevue/button';
+import Slider from 'primevue/slider';
 import { Bar, Radar, Doughnut } from 'vue-chartjs';
 import {
   Chart as ChartJS,
@@ -109,8 +177,11 @@ import type { ChartOptions } from 'chart.js';
 import { getOverview, getTasteMap } from '../../api/analytics';
 import type { OverviewResponse, TasteMapResponse } from '../../api/analytics';
 import { useI18n } from 'vue-i18n';
-import { updateUserTitle, getUserTitleByTitleId } from '../../api/userTitles';
+import { updateUserTitle, getUserTitleByTitleId, createUserTitle } from '../../api/userTitles';
 import { useToast } from 'primevue/usetoast';
+import RecommendationCard from '../../components/common/RecommendationCard.vue';
+import { fetchRecommendations } from '../../api/recommendations';
+import type { MediaType, RecommendationItemResponse, TitleStatus } from '../../api/types';
 
 ChartJS.register(
   RadialLinearScale,
@@ -130,6 +201,31 @@ const taste = ref<TasteMapResponse | null>(null);
 const loading = ref(true);
 const { t } = useI18n();
 const toast = useToast();
+const router = useRouter();
+
+const genreOverride = ref(50);
+const moodOverride = ref(50);
+const noveltyOverride = ref(50);
+const decadeOverride = ref(50);
+const countryOverride = ref(50);
+const peopleOverride = ref(50);
+const editorLoading = ref(false);
+
+interface EditorRecCard {
+  id: string;
+  tmdbId: number;
+  mediaType: MediaType;
+  displayTitle: string;
+  meta: string;
+  secondaryMeta: string;
+  tags: string[];
+  poster: string | null;
+  explanation: string[];
+  statusLabel?: string;
+  canAddToWatchlist: boolean;
+}
+
+const editorRecs = ref<EditorRecCard[]>([]);
 
 onMounted(async () => {
   try {
@@ -249,6 +345,162 @@ const insights = computed(() => {
   return lines;
 });
 
+const overrideScale = (value: number) => 0.5 + (value / 100) * 1.0; // 0.5–1.5
+const overrideLabel = (value: number) => {
+  if (value < 40) return 'Чуть слабее в подборке';
+  if (value > 60) return 'Сильнее влияет на рекомендации';
+  return 'Баланс, как сейчас';
+};
+
+const buildEditorCard = (item: RecommendationItemResponse): EditorRecCard => {
+  const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
+  const metaParts: string[] = [];
+  if (year) metaParts.push(String(year));
+  if (item.title.tmdbRating) metaParts.push(`TMDB ${item.title.tmdbRating.toFixed(1)}`);
+  metaParts.push(
+    item.title.mediaType === 'movie'
+      ? 'Фильм'
+      : item.title.mediaType === 'tv'
+        ? 'Сериал'
+        : 'Тайтл',
+  );
+  const secondary = [
+    item.title.countries?.slice(0, 2).join(', '),
+    item.title.runtime ? `${item.title.runtime} мин` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const status = item.userState?.status ?? null;
+  const liked = item.userState?.liked ?? false;
+  const disliked = item.userState?.disliked ?? false;
+
+  const statusLabel =
+    disliked || status === ('dropped' as TitleStatus)
+      ? 'В антисписке'
+      : status === ('watched' as TitleStatus)
+        ? 'Смотрел'
+        : status === ('watching' as TitleStatus)
+          ? 'Смотрю'
+          : status === ('planned' as TitleStatus) || liked
+            ? 'В списке'
+            : undefined;
+
+  const tags: string[] = [];
+  if (item.title.genres?.length) tags.push(...item.title.genres.slice(0, 2));
+  const country = item.title.countries?.[0];
+  if (country) tags.push(country);
+
+  const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
+
+  return {
+    id: item.title.id,
+    tmdbId: item.title.tmdbId,
+    mediaType: item.title.mediaType,
+    displayTitle: item.title.russianTitle || item.title.originalTitle,
+    meta: metaParts.join(' · '),
+    secondaryMeta: secondary,
+    tags,
+    poster: item.title.posterPath ? `${TMDB_IMAGE_BASE}${item.title.posterPath}` : null,
+    explanation: item.explanation,
+    statusLabel,
+    canAddToWatchlist:
+      !item.userState ||
+      (!liked &&
+        !disliked &&
+        status !== ('planned' as TitleStatus) &&
+        status !== ('watching' as TitleStatus) &&
+        status !== ('watched' as TitleStatus)),
+  };
+};
+
+const loadEditorRecs = async () => {
+  editorLoading.value = true;
+  try {
+    const data = await fetchRecommendations({
+      limit: 5,
+      overrideGenre: overrideScale(genreOverride.value),
+      overrideMood: overrideScale(moodOverride.value),
+      overrideNovelty: overrideScale(noveltyOverride.value),
+      overrideDecade: overrideScale(decadeOverride.value),
+      overrideCountry: overrideScale(countryOverride.value),
+      overridePeople: overrideScale(peopleOverride.value),
+    });
+    editorRecs.value = data.items.map(buildEditorCard);
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось обновить подборку',
+      life: 3000,
+    });
+  } finally {
+    editorLoading.value = false;
+  }
+};
+
+const handleEditorAddToWatchlist = async (item: EditorRecCard) => {
+  try {
+    await createUserTitle({
+      tmdbId: item.tmdbId,
+      mediaType: item.mediaType,
+      status: 'planned',
+      source: 'recommendation',
+    });
+    editorRecs.value = editorRecs.value.map((rec) =>
+      rec.id === item.id
+        ? {
+            ...rec,
+            statusLabel: 'В списке',
+            canAddToWatchlist: false,
+          }
+        : rec,
+    );
+    toast.add({
+      severity: 'success',
+      summary: 'Добавлено',
+      detail: 'Тайтл в списке к просмотру',
+      life: 2200,
+    });
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось добавить',
+      life: 2600,
+    });
+  }
+};
+
+const openEditorDetails = (item: EditorRecCard) => {
+  router.push({ path: `/title/${item.id}` });
+};
+
+const handleEditorLike = (item: EditorRecCard) => {
+  toast.add({
+    severity: 'info',
+    summary: 'Лайк для редактора вкуса',
+    detail: 'Подборка будет переобучена через стандартный экран рекомендаций.',
+    life: 2500,
+  });
+};
+
+const handleEditorWatched = (item: EditorRecCard) => {
+  toast.add({
+    severity: 'info',
+    summary: 'Смотрел',
+    detail: 'Отметьте просмотр через экран рекомендаций или истории.',
+    life: 2500,
+  });
+};
+
+const handleEditorDislike = (item: EditorRecCard) => {
+  toast.add({
+    severity: 'info',
+    summary: 'Дизлайк',
+    detail: 'Используйте дизлайк на карточке рекомендаций для обучения антисписка.',
+    life: 2500,
+  });
+};
+
 </script>
 
 <style scoped>
@@ -325,5 +577,41 @@ const insights = computed(() => {
   margin-top: 8px;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.editor {
+  grid-column: 1 / -1;
+}
+
+.editor-caption {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.editor-field label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.editor-field small {
+  color: var(--text-secondary);
+}
+
+.editor-actions {
+  margin-top: 10px;
+}
+
+.editor-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
 }
 </style>

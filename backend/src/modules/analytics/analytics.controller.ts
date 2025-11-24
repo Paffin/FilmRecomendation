@@ -21,4 +21,9 @@ export class AnalyticsController {
   history(@Req() req: any) {
     return this.service.history(req.user.userId);
   }
+
+  @Get('context-presets')
+  contextPresets(@Req() req: any) {
+    return this.service.contextPresets(req.user.userId);
+  }
 }

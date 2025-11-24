@@ -38,7 +38,11 @@ export class TmdbService {
     return this.cachedGet(
       `details:${mediaType}:${tmdbId}`,
       `/${mediaType}/${tmdbId}`,
-      { language: this.language, append_to_response: 'external_ids,credits,similar,keywords' },
+      {
+        language: this.language,
+        append_to_response:
+          'external_ids,credits,similar,keywords,release_dates,content_ratings',
+      },
       30 * 60 * 1000,
     );
   }
@@ -67,6 +71,15 @@ export class TmdbService {
       `/${mediaType}/popular`,
       { language: this.language, page },
       30 * 60 * 1000,
+    );
+  }
+
+  async videos(tmdbId: number, mediaType: string) {
+    return this.cachedGet(
+      `videos:${mediaType}:${tmdbId}`,
+      `/${mediaType}/${tmdbId}/videos`,
+      { language: this.language, include_video_language: this.language },
+      60 * 60 * 1000,
     );
   }
 

@@ -1,5 +1,5 @@
 import api from './client';
-import type { RecommendationResponse } from './types';
+import type { RecommendationResponse, EveningProgramResponse } from './types';
 
 export interface RecommendationQuery {
   limit?: number;
@@ -10,10 +10,24 @@ export interface RecommendationQuery {
   noveltyBias?: 'safe' | 'mix' | 'surprise';
   pace?: 'calm' | 'balanced' | 'dynamic';
   freshness?: 'trending' | 'classic' | 'any';
+   diversityLevel?: 'soft' | 'balanced' | 'bold';
+  overrideGenre?: number;
+  overrideMood?: number;
+  overrideNovelty?: number;
+  overrideDecade?: number;
+  overrideCountry?: number;
+  overridePeople?: number;
 }
 
 export async function fetchRecommendations(params: RecommendationQuery = {}) {
   const { data } = await api.get<RecommendationResponse>('/recommendations', { params });
+  return data;
+}
+
+export async function fetchEveningProgram(params: RecommendationQuery = {}) {
+  const { data } = await api.get<EveningProgramResponse>('/recommendations/evening-program', {
+    params,
+  });
   return data;
 }
 

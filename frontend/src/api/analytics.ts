@@ -20,6 +20,18 @@ export interface TasteMapResponse {
   antiList: { id: string; title: string }[];
 }
 
+export interface ContextPresetResponse {
+  id: string;
+  label: string;
+  mood?: string | null;
+  mindset?: string | null;
+  company?: string | null;
+  timeAvailable?: string | null;
+  noveltyBias?: 'safe' | 'mix' | 'surprise' | null;
+  pace?: 'calm' | 'balanced' | 'dynamic' | null;
+  freshness?: 'trending' | 'classic' | 'any' | null;
+}
+
 export async function getOverview() {
   const { data } = await api.get<OverviewResponse>('/analytics/overview');
   return data;
@@ -32,5 +44,10 @@ export async function getTasteMap() {
 
 export async function getHistory() {
   const { data } = await api.get<UserTitleStateResponse[]>('/analytics/history');
+  return data;
+}
+
+export async function getContextPresets() {
+  const { data } = await api.get<ContextPresetResponse[]>('/analytics/context-presets');
   return data;
 }

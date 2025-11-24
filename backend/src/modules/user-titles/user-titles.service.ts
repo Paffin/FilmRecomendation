@@ -4,6 +4,7 @@ import { TitlesService } from '../titles/titles.service';
 import { CreateUserTitleDto } from './dto/create-user-title.dto';
 import { UpdateUserTitleDto } from './dto/update-user-title.dto';
 import { MediaType, TitleStatus } from '@prisma/client';
+import { mapUserTitleStateToApi } from './user-titles.mapper';
 
 @Injectable()
 export class UserTitlesService {
@@ -13,7 +14,7 @@ export class UserTitlesService {
   ) {}
 
   async list(userId: string, status?: TitleStatus, mediaType?: MediaType) {
-    return this.prisma.userTitleState.findMany({
+    const rows = await this.prisma.userTitleState.findMany({
       where: {
         userId,
         status,
@@ -22,6 +23,7 @@ export class UserTitlesService {
       include: { title: true },
       orderBy: { lastInteractionAt: 'desc' },
     });
+    return rows.map((row) => mapUserTitleStateToApi(row));
   }
 
   async findByTitle(userId: string, titleId: string) {
@@ -29,7 +31,7 @@ export class UserTitlesService {
       where: { userId_titleId: { userId, titleId } },
       include: { title: true },
     });
-    return state ?? null;
+    return state ? mapUserTitleStateToApi(state) : null;
   }
 
   async create(userId: string, dto: CreateUserTitleDto) {
@@ -55,7 +57,7 @@ export class UserTitlesService {
       },
       include: { title: true },
     });
-    return state;
+    return mapUserTitleStateToApi(state);
   }
 
   async update(userId: string, id: string, dto: UpdateUserTitleDto) {
@@ -78,6 +80,6 @@ export class UserTitlesService {
       },
       include: { title: true },
     });
-    return state;
+    return mapUserTitleStateToApi(state);
   }
 }

@@ -46,3 +46,13 @@ export async function getSimilar(id: string, page = 1) {
   const { data } = await api.get(`/titles/${id}/similar`, { params: { page } });
   return data;
 }
+
+export interface TrailerResponse {
+  youtubeKey: string;
+  name: string;
+}
+
+export async function getTrailer(id: string) {
+  const { data } = await api.get<TrailerResponse | null>(`/titles/${id}/trailer`);
+  return data;
+}

@@ -15,6 +15,18 @@
         />
       </div>
     </div>
+    <div class="emotion-block">
+      <h3 class="emotion-title">Эмоциональная линия</h3>
+      <div v-if="loading" class="emotion-skeleton">
+        <Skeleton height="140px" border-radius="12px" />
+      </div>
+      <div v-else-if="emotionChartData.labels.length === 0" class="empty">
+        Недостаточно данных — отметьте несколько просмотренных тайтлов.
+      </div>
+      <div v-else class="emotion-chart">
+        <Line :data="emotionChartData" :options="emotionChartOptions" />
+      </div>
+    </div>
     <div v-if="loading" class="list">
       <Skeleton v-for="i in 4" :key="i" height="90px" border-radius="14px" />
     </div>
@@ -59,6 +71,19 @@ import { useToast } from 'primevue/usetoast';
 import { getHistory } from '../../api/analytics';
 import { updateUserTitle } from '../../api/userTitles';
 import type { UserTitleStateResponse, TitleStatus } from '../../api/types';
+import { Line } from 'vue-chartjs';
+import {
+  Chart as ChartJS,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import type { ChartOptions } from 'chart.js';
+
+ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend);
 
 const periods = [
   { label: '30 дней', value: 30 },
@@ -162,6 +187,90 @@ const changeStatus = async (item: UserTitleStateResponse, status: TitleStatus) =
     toast.add({ severity: 'error', summary: 'Не удалось изменить статус', life: 2500 });
   }
 };
+
+const emotionChartData = computed(() => {
+  if (!filteredHistory.value.length) {
+    return {
+      labels: [] as string[],
+      datasets: [] as any[],
+    };
+  }
+
+  const sorted = [...filteredHistory.value].sort(
+    (a, b) =>
+      new Date(a.lastInteractionAt).getTime() - new Date(b.lastInteractionAt).getTime(),
+  );
+
+  const labels: string[] = [];
+  const values: number[] = [];
+
+  sorted.forEach((item) => {
+    labels.push(new Date(item.lastInteractionAt).toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' }));
+    values.push(computeMoodScore(item.title.genres ?? []));
+  });
+
+  return {
+    labels,
+    datasets: [
+      {
+        label: 'От лёгкого к тяжёлому',
+        data: values,
+        borderColor: '#8ab4ff',
+        backgroundColor: 'rgba(138,180,255,0.15)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 2,
+      },
+    ],
+  };
+});
+
+const emotionChartOptions: ChartOptions<'line'> = {
+  responsive: true,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => {
+          const v = ctx.parsed.y;
+          if (v < -0.3) return 'Преимущественно лёгкий просмотр';
+          if (v > 0.3) return 'Преимущественно тяжёлый просмотр';
+          return 'Смешанное настроение';
+        },
+      },
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: '#cfd3e4' },
+      grid: { color: 'rgba(255,255,255,0.06)' },
+    },
+    y: {
+      min: -1,
+      max: 1,
+      ticks: { color: '#cfd3e4', stepSize: 0.5 },
+      grid: { color: 'rgba(255,255,255,0.06)' },
+    },
+  },
+};
+
+function computeMoodScore(genres: string[]): number {
+  if (!genres.length) return 0;
+  const lightKeywords = ['комедия', 'анимация', 'семейный', 'приключения'];
+  const heavyKeywords = ['драма', 'триллер', 'ужасы', 'криминал'];
+
+  let light = 0;
+  let heavy = 0;
+  genres.forEach((g) => {
+    const name = g.toLowerCase();
+    if (lightKeywords.some((k) => name.includes(k))) light += 1;
+    if (heavyKeywords.some((k) => name.includes(k))) heavy += 1;
+  });
+
+  if (!light && !heavy) return 0;
+  const score = (heavy - light) / Math.max(light + heavy, 1);
+  return Math.max(-1, Math.min(1, score));
+}
 </script>
 
 <style scoped>
@@ -175,6 +284,23 @@ const changeStatus = async (item: UserTitleStateResponse, status: TitleStatus) =
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.emotion-block {
+  margin: 12px 0 16px;
+}
+
+.emotion-title {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.emotion-chart {
+  max-height: 180px;
+}
+
+.emotion-skeleton {
+  max-width: 100%;
 }
 
 .list {

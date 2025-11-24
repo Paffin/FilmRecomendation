@@ -14,6 +14,11 @@ export class RecommendationsController {
     return this.service.getRecommendations(req.user.userId, query);
   }
 
+  @Get('evening-program')
+  getEveningProgram(@Req() req: any, @Query() query: RecommendationQueryDto) {
+    return this.service.getEveningProgram(req.user.userId, query);
+  }
+
   @Post('feedback')
   feedback(@Req() req: any, @Body() dto: RecommendationFeedbackDto) {
     return this.service.handleFeedback(req.user.userId, dto);

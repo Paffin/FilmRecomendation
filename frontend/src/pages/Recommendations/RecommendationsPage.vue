@@ -7,6 +7,9 @@
         <p class="subtitle">
           Каждый лайк, дизлайк и «Смотрел» мгновенно переобучает подборку под ваш текущий настрой.
         </p>
+        <p class="context-hint">
+          {{ t('recommendations.contextHint') }}
+        </p>
         <div class="context-grid">
           <div>
             <label>{{ t('recommendations.mood') }}</label>
@@ -38,6 +41,15 @@
             <label>{{ t('recommendations.freshness') }}</label>
             <Dropdown v-model="freshness" :options="freshnessOptions" option-label="label" option-value="value" />
           </div>
+          <div>
+            <label>{{ t('recommendations.diversity') }}</label>
+            <Dropdown
+              v-model="diversityLevel"
+              :options="diversityOptions"
+              option-label="label"
+              option-value="value"
+            />
+          </div>
         </div>
       </div>
       <Button :label="t('common.refresh')" icon="pi pi-refresh" severity="secondary" :loading="loading" @click="load" />
@@ -45,6 +57,18 @@
 
     <div v-if="contextTags.length" class="context-tags surface-card">
       <Tag v-for="tag in contextTags" :key="tag" :value="tag" />
+    </div>
+
+    <div v-if="contextPresets.length" class="presets">
+      <span class="presets-label">Часто удачные режимы:</span>
+      <Button
+        v-for="preset in contextPresets"
+        :key="preset.id"
+        size="small"
+        text
+        :label="preset.label"
+        @click="applyPreset(preset)"
+      />
     </div>
 
     <div v-if="loading" class="list">
@@ -72,6 +96,45 @@
         @add-to-watchlist="addToWatchlist(item)"
       />
     </TransitionGroup>
+
+    <div class="evening-block">
+      <div class="evening-header">
+        <h3 class="section-title">Программа вечера</h3>
+        <Button
+          label="Собрать программу"
+          icon="pi pi-sparkles"
+          size="small"
+          :loading="eveningLoading"
+          @click="loadEveningProgram"
+        />
+      </div>
+      <div v-if="eveningLoading && eveningProgram.length === 0" class="list">
+        <Skeleton v-for="n in 3" :key="n" height="220px" border-radius="16px" />
+      </div>
+      <div v-else-if="!eveningLoading && eveningProgram.length === 0" class="empty">
+        Нажмите «Собрать программу», чтобы получить связку «разогрев → основной фильм → десерт».
+      </div>
+      <div v-else class="list">
+        <RecommendationCard
+          v-for="item in eveningProgram"
+          :key="item.id + item.role"
+          :title="item.displayTitle"
+          :meta="item.meta"
+          :secondary-meta="item.secondaryMeta"
+          :tags="[roleLabel(item.role), ...item.tags]"
+          :poster="item.poster"
+          :explanation="item.explanation"
+          :status-label="item.statusLabel"
+          :can-add-to-watchlist="item.canAddToWatchlist"
+          :busy="false"
+          @like="like(item)"
+          @watched="watched(item)"
+          @dislike="dislike(item)"
+          @details="openDetails(item)"
+          @add-to-watchlist="addToWatchlist(item)"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -85,8 +148,16 @@ import Tag from 'primevue/tag';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RecommendationCard from '../../components/common/RecommendationCard.vue';
-import { fetchRecommendations, sendRecommendationFeedback } from '../../api/recommendations';
-import type { ApiTitle, MediaType, RecommendationItemResponse, TitleStatus } from '../../api/types';
+import { fetchRecommendations, fetchEveningProgram, sendRecommendationFeedback } from '../../api/recommendations';
+import type {
+  ApiTitle,
+  MediaType,
+  RecommendationItemResponse,
+  TitleStatus,
+  EveningProgramItemResponse,
+} from '../../api/types';
+import { getContextPresets } from '../../api/analytics';
+import type { ContextPresetResponse } from '../../api/analytics';
 import { createUserTitle } from '../../api/userTitles';
 import { useI18n } from 'vue-i18n';
 
@@ -106,6 +177,10 @@ interface RecCard {
   canAddToWatchlist: boolean;
 }
 
+interface EveningRecCard extends RecCard {
+  role: 'warmup' | 'main' | 'dessert';
+}
+
 const recommendations = ref<RecCard[]>([]);
 const sessionId = ref<string | null>(null);
 const loading = ref(false);
@@ -120,6 +195,10 @@ const timeAvailable = ref('90');
 const noveltyBias = ref<'safe' | 'mix' | 'surprise'>('mix');
 const pace = ref<'calm' | 'balanced' | 'dynamic'>('balanced');
 const freshness = ref<'trending' | 'classic' | 'any'>('trending');
+const diversityLevel = ref<'soft' | 'balanced' | 'bold'>('balanced');
+const contextPresets = ref<ContextPresetResponse[]>([]);
+const eveningProgram = ref<EveningRecCard[]>([]);
+const eveningLoading = ref(false);
 
 const companies = [
   { label: 'Один', value: 'solo' },
@@ -147,6 +226,11 @@ const freshnessOptions = [
   { label: 'Классика', value: 'classic' },
   { label: 'Любое', value: 'any' },
 ];
+const diversityOptions = [
+  { label: 'Мягкая диверсификация', value: 'soft' },
+  { label: 'Сбалансированно', value: 'balanced' },
+  { label: 'Смело и разнообразно', value: 'bold' },
+];
 
 const moodLabel = computed(() => (mood.value < 40 ? 'Лёгкое' : mood.value > 70 ? 'Тяжёлое' : 'Нейтральное'));
 const mindsetLabel = computed(() =>
@@ -163,6 +247,32 @@ const contextTags = computed(() => [
   paceOptions.find((p) => p.value === pace.value)?.label ?? '',
   freshnessOptions.find((f) => f.value === freshness.value)?.label ?? '',
 ].filter(Boolean));
+
+const applyPreset = (preset: ContextPresetResponse) => {
+  if (preset.mood === 'light') mood.value = 25;
+  else if (preset.mood === 'heavy') mood.value = 80;
+  else if (preset.mood === 'neutral') mood.value = 50;
+
+  if (preset.mindset === 'relax') mindset.value = 25;
+  else if (preset.mindset === 'focus') mindset.value = 80;
+  else if (preset.mindset === 'balanced') mindset.value = 50;
+
+  if (preset.company) company.value = preset.company;
+  if (preset.timeAvailable) timeAvailable.value = preset.timeAvailable;
+  if (preset.noveltyBias) noveltyBias.value = preset.noveltyBias;
+  if (preset.pace) pace.value = preset.pace;
+  if (preset.freshness) freshness.value = preset.freshness;
+
+  load();
+};
+
+const loadContextPresets = async () => {
+  try {
+    contextPresets.value = await getContextPresets();
+  } catch {
+    // тихо игнорируем ошибки — пресеты опциональны
+  }
+};
 
 const mapToCard = (item: RecommendationItemResponse): RecCard => {
   const year = item.title.releaseDate ? new Date(item.title.releaseDate).getFullYear() : null;
@@ -202,6 +312,14 @@ const mapToCard = (item: RecommendationItemResponse): RecCard => {
   };
 };
 
+const mapEveningItemToCard = (item: EveningProgramItemResponse): EveningRecCard => {
+  const base = mapToCard(item);
+  return {
+    ...base,
+    role: item.role,
+  };
+};
+
 const buildTags = (title: ApiTitle) => {
   const tags: string[] = [];
   if (title.genres?.length) tags.push(...title.genres.slice(0, 2));
@@ -230,6 +348,7 @@ const load = async () => {
       noveltyBias: noveltyBias.value,
       pace: pace.value,
       freshness: freshness.value,
+      diversityLevel: diversityLevel.value,
     });
     sessionId.value = data.sessionId;
     recommendations.value = data.items.map(mapToCard);
@@ -340,6 +459,32 @@ const dislike = async (item: RecCard) => {
   }
 };
 
+const loadEveningProgram = async () => {
+  eveningLoading.value = true;
+  try {
+    const data = await fetchEveningProgram({
+      limit: 9,
+      mood: moodParam.value,
+      mindset: mindsetParam.value,
+      company: company.value,
+      timeAvailable: timeAvailable.value,
+      noveltyBias: noveltyBias.value,
+      pace: pace.value,
+      freshness: freshness.value,
+      diversityLevel: diversityLevel.value,
+    });
+    eveningProgram.value = data.items.map(mapEveningItemToCard);
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Не удалось собрать программу вечера',
+      life: 3500,
+    });
+  } finally {
+    eveningLoading.value = false;
+  }
+};
+
 const addToWatchlist = async (item: RecCard) => {
   actionLoading.value = item.id;
   try {
@@ -381,7 +526,16 @@ const openDetails = (item: RecCard) => {
   router.push({ path: `/title/${item.id}`, query: { why } });
 };
 
-onMounted(load);
+const roleLabel = (role: 'warmup' | 'main' | 'dessert') => {
+  if (role === 'warmup') return 'Разогрев';
+  if (role === 'dessert') return 'На десерт';
+  return 'Основной';
+};
+
+onMounted(() => {
+  load();
+  loadContextPresets();
+});
 </script>
 
 <style scoped>
@@ -419,6 +573,21 @@ onMounted(load);
   background: rgba(255, 255, 255, 0.03);
 }
 
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+  align-items: center;
+}
+
+.presets-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
 .empty {
   color: var(--text-secondary);
   padding: 12px 0;
@@ -448,6 +617,13 @@ small {
   font-size: 14px;
 }
 
+.context-hint {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  opacity: 0.9;
+}
+
 .rec-fade-enter-active,
 .rec-fade-leave-active {
   transition: all 0.25s ease-out;
@@ -457,5 +633,22 @@ small {
 .rec-fade-leave-to {
   opacity: 0;
   transform: translateY(8px);
+}
+
+@media (max-width: 768px) {
+  .top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rec-shell {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .list {
+    margin-top: 12px;
+  }
 }
 </style>

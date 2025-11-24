@@ -76,6 +76,37 @@ export class TitlesService {
     return similar;
   }
 
+  async getTrailerForTitle(id: string) {
+    const title = await this.findOne(id);
+    const mediaType = this.mapMediaType(title.mediaType);
+    const videos = await this.tmdb.videos(title.tmdbId, mediaType);
+
+    const results: any[] = videos?.results ?? [];
+    if (!results.length) {
+      return null;
+    }
+
+    const isTrailer = (v: any) => v.type === 'Trailer';
+    const isYoutube = (v: any) => v.site === 'YouTube';
+    const isRussian = (v: any) => v.iso_639_1 === 'ru' || v.name?.toLowerCase().includes('рус');
+
+    const pick = (predicate: (v: any) => boolean) =>
+      results.find((v) => isTrailer(v) && isYoutube(v) && predicate(v));
+
+    const ruTrailer = pick(isRussian);
+    const anyTrailer = pick(() => true);
+    const candidate = ruTrailer ?? anyTrailer;
+
+    if (!candidate) {
+      return null;
+    }
+
+    return {
+      youtubeKey: candidate.key,
+      name: candidate.name as string,
+    };
+  }
+
   private mapMediaType(mediaType: MediaType): string {
     if (mediaType === 'movie') return 'movie';
     if (mediaType === 'tv') return 'tv';

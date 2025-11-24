@@ -6,19 +6,24 @@
         <button :class="{ active: mode === 'register' }" @click="mode = 'register'">Регистрация</button>
       </div>
       <form class="form" @submit.prevent="submit">
-        <span class="p-float-label">
-          <InputText id="email" v-model="email" autocomplete="email" />
-          <label for="email">Email</label>
-        </span>
-        <span class="p-float-label">
-          <Password id="password" v-model="password" toggle-mask :feedback="false" />
-          <label for="password">Пароль</label>
-        </span>
-        <span v-if="mode === 'register'" class="p-float-label">
-          <InputText id="displayName" v-model="displayName" />
-          <label for="displayName">Имя</label>
-        </span>
-        <Button :label="mode === 'login' ? 'Войти' : 'Создать аккаунт'" type="submit" :loading="auth.loading" />
+        <div class="form-field">
+          <label for="email" class="field-label">Email</label>
+          <InputText id="email" v-model="email" autocomplete="email" class="w-full" />
+        </div>
+        <div class="form-field">
+          <label for="password" class="field-label">Пароль</label>
+          <Password id="password" v-model="password" toggle-mask :feedback="false" class="w-full" />
+        </div>
+        <div v-if="mode === 'register'" class="form-field">
+          <label for="displayName" class="field-label">Имя</label>
+          <InputText id="displayName" v-model="displayName" class="w-full" />
+        </div>
+        <Button
+          :label="mode === 'login' ? 'Войти' : 'Создать аккаунт'"
+          type="submit"
+          :loading="auth.loading"
+          class="w-full"
+        />
       </form>
     </div>
   </div>
@@ -92,5 +97,17 @@ const submit = async () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.field-label {
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 </style>

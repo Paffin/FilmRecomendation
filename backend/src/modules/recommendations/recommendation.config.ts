@@ -9,6 +9,9 @@ export interface RecommendationWeights {
   country: number;
   decade: number;
   people: number;
+   keyword: number;
+   collection: number;
+   ageRating: number;
   runtime: number;
   mood: number;
   mindset: number;
@@ -32,6 +35,9 @@ export const weightVariants: Record<WeightVariant, RecommendationWeights> = {
     country: 0.1,
     decade: 0.08,
     people: 0.12,
+    keyword: 0.06,
+    collection: 0.05,
+    ageRating: 0.07,
     runtime: 0.12,
     mood: 0.1,
     mindset: 0.05,
@@ -53,6 +59,9 @@ export const weightVariants: Record<WeightVariant, RecommendationWeights> = {
     country: 0.08,
     decade: 0.1,
     people: 0.14,
+    keyword: 0.07,
+    collection: 0.05,
+    ageRating: 0.08,
     runtime: 0.1,
     mood: 0.1,
     mindset: 0.06,

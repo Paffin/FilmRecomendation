@@ -38,6 +38,15 @@ export interface RecommendationResponse {
   items: RecommendationItemResponse[];
 }
 
+export interface EveningProgramItemResponse extends RecommendationItemResponse {
+  role: 'warmup' | 'main' | 'dessert';
+}
+
+export interface EveningProgramResponse {
+  sessionId: string;
+  items: EveningProgramItemResponse[];
+}
+
 export interface UserTitleStateResponse {
   id: string;
   status: TitleStatus;

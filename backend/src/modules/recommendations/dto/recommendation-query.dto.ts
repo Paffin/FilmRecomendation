@@ -36,4 +36,53 @@ export class RecommendationQueryDto {
   @IsOptional()
   @IsString()
   freshness?: 'trending' | 'classic' | 'any';
+
+  @IsOptional()
+  @IsString()
+  diversityLevel?: 'soft' | 'balanced' | 'bold';
+
+  @IsOptional()
+  @IsString()
+  timeOfDay?: 'morning' | 'day' | 'evening' | 'late_night';
+
+  @IsOptional()
+  @IsString()
+  dayOfWeek?: 'weekday' | 'weekend';
+
+  // Live taste editor overrides (0.5–1.5 — множитель веса)
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0.5)
+  @Max(1.5)
+  overrideGenre?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0.5)
+  @Max(1.5)
+  overrideMood?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0.5)
+  @Max(1.5)
+  overrideNovelty?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0.5)
+  @Max(1.5)
+  overrideDecade?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0.5)
+  @Max(1.5)
+  overrideCountry?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0.5)
+  @Max(1.5)
+  overridePeople?: number;
 }

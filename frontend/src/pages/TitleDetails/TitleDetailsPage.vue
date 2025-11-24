@@ -5,7 +5,10 @@
         <span v-if="!title.posterPath" class="placeholder">Нет постера</span>
       </div>
       <div class="info">
-        <h2>{{ title.russianTitle || title.originalTitle }}</h2>
+        <h2 class="title-row">
+          <span>{{ title.russianTitle || title.originalTitle }}</span>
+          <span v-if="statusLabel" class="status-chip">{{ statusLabel }}</span>
+        </h2>
         <p class="meta">
           {{ year }} · {{ mediaLabel }}
           <span v-if="title.tmdbRating"> · TMDB {{ title.tmdbRating.toFixed(1) }}</span>
@@ -25,9 +28,36 @@
         <div class="actions">
           <Button label="В список" icon="pi pi-plus" :loading="saving" @click="addToList" />
           <Button label="Смотрел" icon="pi pi-check" severity="success" outlined :loading="saving" @click="markWatched" />
-          <Button icon="pi pi-thumbs-up" severity="success" :outlined="!state?.liked" :loading="saving" @click="toggleLike" />
-          <Button icon="pi pi-thumbs-down" severity="danger" :outlined="!state?.disliked" :loading="saving" @click="toggleDislike" />
+          <Button
+            icon="pi pi-thumbs-up"
+            :severity="state?.liked ? 'success' : 'secondary'"
+            :outlined="!state?.liked"
+            :loading="saving"
+            @click="toggleLike"
+          />
+          <Button
+            icon="pi pi-thumbs-down"
+            :severity="state?.disliked ? 'danger' : 'secondary'"
+            :outlined="!state?.disliked"
+            :loading="saving"
+            @click="toggleDislike"
+          />
         </div>
+      </div>
+    </div>
+    <div v-if="trailerLoading" class="trailer">
+      <Skeleton height="220px" border-radius="16px" />
+    </div>
+    <div v-else-if="trailerKey" class="trailer">
+      <h3 class="section-title">Трейлер</h3>
+      <div class="trailer-frame">
+        <iframe
+          :src="trailerUrl"
+          title="Трейлер"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+        />
       </div>
     </div>
     <div>
@@ -64,13 +94,15 @@ import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Skeleton from 'primevue/skeleton';
 import { useToast } from 'primevue/usetoast';
-import { getTitle, getSimilar, getTitleByTmdb } from '../../api/titles';
+import { useI18n } from 'vue-i18n';
+import { getTitle, getSimilar, getTitleByTmdb, getTrailer } from '../../api/titles';
 import { createUserTitle, getUserTitleByTitleId, updateUserTitle } from '../../api/userTitles';
 import type { ApiTitle, MediaType, UserTitleStateResponse } from '../../api/types';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const { t } = useI18n();
 
 const title = ref<ApiTitle | null>(null);
 const state = ref<UserTitleStateResponse | null>(null);
@@ -79,6 +111,8 @@ const loading = ref(true);
 const similarLoading = ref(true);
 const saving = ref(false);
 const whyReasons = ref<string[]>([]);
+const trailerKey = ref<string | null>(null);
+const trailerLoading = ref(false);
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 
@@ -94,6 +128,7 @@ const load = async () => {
     loading.value = false;
   }
 
+  fetchTrailer();
   fetchSimilar();
 };
 
@@ -125,6 +160,18 @@ const fetchSimilar = async () => {
     }));
   } finally {
     similarLoading.value = false;
+  }
+};
+
+const fetchTrailer = async () => {
+  trailerLoading.value = true;
+  trailerKey.value = null;
+  try {
+    const id = route.params.id as string;
+    const res = await getTrailer(id);
+    trailerKey.value = res?.youtubeKey ?? null;
+  } finally {
+    trailerLoading.value = false;
   }
 };
 
@@ -213,6 +260,10 @@ const posterStyle = computed(() =>
     : undefined,
 );
 
+const trailerUrl = computed(() =>
+  trailerKey.value ? `https://www.youtube.com/embed/${trailerKey.value}?autoplay=0&hl=ru` : '',
+);
+
 const year = computed(() => (title.value?.releaseDate ? new Date(title.value.releaseDate).getFullYear() : '—'));
 const mediaLabel = computed(() => {
   if (!title.value) return '';
@@ -220,6 +271,15 @@ const mediaLabel = computed(() => {
   if (title.value.mediaType === 'tv') return 'Сериал';
   if (title.value.mediaType === 'anime') return 'Аниме';
   return 'Тайтл';
+});
+
+const statusLabel = computed(() => {
+  if (!state.value) return '';
+  if (state.value.disliked || state.value.status === 'dropped') return 'В антисписке';
+  if (state.value.status === 'watched') return t('watchlist.status.watched');
+  if (state.value.status === 'watching') return t('watchlist.status.watching');
+  if (state.value.status === 'planned' || state.value.liked) return t('watchlist.status.planned');
+  return '';
 });
 
 const mapMediaType = (value?: string): MediaType | null => {
@@ -241,12 +301,14 @@ watch(
 <style scoped>
 .details { display: flex; flex-direction: column; gap: 18px; }
 .hero { display: grid; grid-template-columns: 220px 1fr; gap: 16px; }
+.title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .poster { background: linear-gradient(135deg, rgba(138,180,255,0.35), rgba(255,73,167,0.25)); border-radius: 16px; height: 320px; display: grid; place-items: center; color: var(--text-secondary); }
 .placeholder { padding: 6px 12px; background: rgba(255,255,255,0.06); border-radius: 10px; }
 .meta { color: var(--text-secondary); }
 .overview { color: #cfd3e4; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.status-chip { padding: 4px 10px; border-radius: 999px; background: rgba(138,180,255,0.16); border: 1px solid rgba(138,180,255,0.45); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .sim-card { display: grid; grid-template-columns: 90px 1fr; gap: 10px; align-items: center; }
 .sim-poster { width: 100%; height: 120px; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,0.04); }
 .sim-info { display: flex; flex-direction: column; gap: 6px; }
@@ -254,5 +316,20 @@ watch(
 .why { margin: 12px 0; }
 .why-title { font-weight: 700; margin-bottom: 6px; }
 .why ul { margin: 0; padding-left: 18px; color: var(--text-secondary); }
+.trailer { margin: 18px 0; }
+.trailer-frame {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+.trailer-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .poster { height: 220px; } }
 </style>
