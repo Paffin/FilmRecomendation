@@ -30,7 +30,7 @@
           :key="node.id"
           type="button"
           class="node"
-          :class="node.kind"
+          :class="[node.kind, { pulse: node.raw.weight && node.raw.weight > 2 }]"
           :style="{ left: `${node.x}%`, top: `${node.y}%`, transform: `translate(-50%, -50%) scale(${node.scale})` }"
           @click="onNodeClick(node)"
         >

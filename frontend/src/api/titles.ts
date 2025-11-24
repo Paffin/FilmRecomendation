@@ -50,6 +50,7 @@ export async function getSimilar(id: string, page = 1) {
 export interface TrailerResponse {
   youtubeKey: string;
   name: string;
+  language?: string | null;
 }
 
 export async function getTrailer(id: string) {

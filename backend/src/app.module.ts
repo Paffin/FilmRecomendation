@@ -13,6 +13,7 @@ import { RecommendationsModule } from './modules/recommendations/recommendations
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthController } from './common/health.controller';
+import { EmbeddingsModule } from './modules/embeddings/embeddings.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { HealthController } from './common/health.controller';
     RecommendationsModule,
     FeedbackModule,
     AnalyticsModule,
+    EmbeddingsModule,
   ],
   controllers: [HealthController],
 })

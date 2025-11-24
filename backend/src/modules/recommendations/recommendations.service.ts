@@ -8,6 +8,7 @@ import {
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
 import { RecommendationTweakDto } from './dto/tweak.dto';
+import { WhyNotDto } from './dto/why-not.dto';
 import { FeedbackContext, TitleStatus, Prisma, Title, RecommendationSession } from '@prisma/client';
 import { pickVariantForUser } from './recommendation.config';
 import { inferSignalGroup } from './signals';
@@ -63,6 +64,36 @@ export class RecommendationsService {
         people: query.overridePeople,
       },
     };
+
+    if (
+      query.mixerRisk !== undefined ||
+      query.mixerNovelty !== undefined ||
+      query.mixerTypeTilt !== undefined
+    ) {
+      const risk = (query.mixerRisk ?? 50) / 100;
+      const novelty = (query.mixerNovelty ?? 50) / 100;
+      const typeTilt = (query.mixerTypeTilt ?? 50) / 100;
+      context.mixer = { risk, novelty, typeTilt };
+
+      if (query.mixerRisk !== undefined) {
+        if (risk > 0.65) {
+          context.noveltyBias = context.noveltyBias ?? 'surprise';
+          context.diversityLevel = context.diversityLevel ?? 'bold';
+        } else if (risk < 0.35) {
+          context.noveltyBias = context.noveltyBias ?? 'safe';
+          context.diversityLevel = context.diversityLevel ?? 'soft';
+        }
+      }
+
+      if (query.mixerNovelty !== undefined) {
+        const noveltyBoost = 0.8 + (novelty - 0.5) * 0.8;
+        context.overrides = {
+          ...(context.overrides ?? {}),
+          novelty: noveltyBoost,
+          genre: (context.overrides?.genre ?? 1) * (1 - Math.abs(novelty - 0.5) * 0.2),
+        };
+      }
+    }
     const variant = pickVariantForUser(userId);
 
     // Экспериментальный слой поверх базовых настроек:
@@ -139,6 +170,7 @@ export class RecommendationsService {
         return {
           title: mapTitleToApi(r.title),
           explanation: r.explanation,
+          origin: 'recommendation',
           userState: state
             ? {
                 status: state.status,
@@ -303,6 +335,50 @@ export class RecommendationsService {
         explanation: replacement.explanation,
         itemId,
       },
+    };
+  }
+
+  async getWhyNot(userId: string, dto: WhyNotDto) {
+    const session = await this.prisma.recommendationSession.findUnique({
+      where: { id: dto.sessionId },
+    });
+    if (!session || session.userId !== userId) throw new NotFoundException('Session not found');
+
+    const context = (session.context ?? {}) as RecommendationContext;
+    const baseItems = await this.prisma.recommendationItem.findMany({
+      where: { sessionId: session.id },
+      select: { titleId: true },
+    });
+    const servedIds = new Set(baseItems.map((i) => i.titleId));
+    if (dto.titleId) servedIds.add(dto.titleId);
+
+    const recs = await this.engine.recommend(userId, 20, context);
+    const alternatives = recs
+      .filter((r) => !servedIds.has(r.title.id))
+      .slice(0, 3);
+
+    const titleIds = alternatives.map((a) => a.title.id);
+    const states = titleIds.length
+      ? await this.prisma.userTitleState.findMany({ where: { userId, titleId: { in: titleIds } } })
+      : [];
+    const stateMap = new Map(states.map((s) => [s.titleId, s]));
+
+    return {
+      items: alternatives.map((alt) => {
+        const state = stateMap.get(alt.title.id);
+        return {
+          title: mapTitleToApi(alt.title),
+          explanation: alt.explanation,
+          origin: 'why_not',
+          userState: state
+            ? {
+                status: state.status,
+                liked: state.liked,
+                disliked: state.disliked,
+              }
+            : null,
+        };
+      }),
     };
   }
 
@@ -482,6 +558,7 @@ export class RecommendationsService {
           role: p.role,
           title: mapTitleToApi(p.title),
           explanation: p.explanation,
+          origin: 'evening_program',
           userState: state
             ? {
                 status: state.status,

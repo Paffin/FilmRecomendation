@@ -17,6 +17,9 @@ export interface RecommendationQuery {
   overrideDecade?: number;
   overrideCountry?: number;
   overridePeople?: number;
+  mixerRisk?: number;
+  mixerNovelty?: number;
+  mixerTypeTilt?: number;
 }
 
 export async function fetchRecommendations(params: RecommendationQuery = {}) {
@@ -47,5 +50,10 @@ export async function sendRecommendationTweak(payload: {
   tone?: 'lighter' | 'heavier';
 }) {
   const { data } = await api.post('/recommendations/tweak', payload);
+  return data;
+}
+
+export async function fetchWhyNot(payload: { sessionId: string; titleId?: string }) {
+  const { data } = await api.post('/recommendations/why-not', payload);
   return data;
 }

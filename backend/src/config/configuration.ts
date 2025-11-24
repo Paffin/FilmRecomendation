@@ -28,4 +28,9 @@ export default () => ({
     sameSite: (process.env.COOKIE_SAMESITE ?? 'lax') as 'lax' | 'strict' | 'none',
   },
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+  embedding: {
+    endpoint: process.env.EMBEDDING_ENDPOINT,
+    apiKey: process.env.EMBEDDING_API_KEY,
+    model: process.env.EMBEDDING_MODEL ?? 'intfloat/multilingual-e5-base',
+  },
 });

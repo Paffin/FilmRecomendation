@@ -49,6 +49,25 @@ export class RecommendationQueryDto {
   @IsString()
   dayOfWeek?: 'weekday' | 'weekend';
 
+  // Taste Mixer sliders (0–100)
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  @Max(100)
+  mixerRisk?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  @Max(100)
+  mixerNovelty?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  @Max(100)
+  mixerTypeTilt?: number;
+
   // Live taste editor overrides (0.5–1.5 — множитель веса)
   @IsOptional()
   @Type(() => Number)

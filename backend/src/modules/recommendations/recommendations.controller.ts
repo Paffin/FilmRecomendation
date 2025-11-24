@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RecommendationQueryDto } from './dto/recommendation-query.dto';
 import { RecommendationFeedbackDto } from './dto/feedback.dto';
 import { RecommendationTweakDto } from './dto/tweak.dto';
+import { WhyNotDto } from './dto/why-not.dto';
 
 @Controller('recommendations')
 @UseGuards(JwtAuthGuard)
@@ -28,5 +29,10 @@ export class RecommendationsController {
   @Post('tweak')
   tweak(@Req() req: any, @Body() dto: RecommendationTweakDto) {
     return this.service.applyTweak(req.user.userId, dto);
+  }
+
+  @Post('why-not')
+  whyNot(@Req() req: any, @Body() dto: WhyNotDto) {
+    return this.service.getWhyNot(req.user.userId, dto);
   }
 }

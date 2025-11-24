@@ -48,8 +48,11 @@
     <div v-if="trailerLoading" class="trailer">
       <Skeleton height="220px" border-radius="16px" />
     </div>
-    <div v-else-if="trailerKey" class="trailer">
-      <h3 class="section-title">Трейлер</h3>
+    <div v-else-if="trailer" class="trailer">
+      <div class="trailer-header">
+        <h3 class="section-title">Трейлер</h3>
+        <Tag :value="trailerLanguageLabel" :severity="trailerIsRussian ? 'success' : 'info'" />
+      </div>
       <div class="trailer-frame">
         <iframe
           :src="trailerUrl"
@@ -60,8 +63,9 @@
         />
       </div>
       <p class="trailer-note">
-        Если встроенный плеер не показывает видео из‑за возрастных ограничений YouTube, вы можете открыть трейлер
-        напрямую:
+        <span v-if="trailerIsRussian">Встроенный русский трейлер с TMDB.</span>
+        <span v-else>Русская дорожка не найдена — показываем оригинальный ролик.</span>
+        Если встроенный плеер не показывает видео из‑за возрастных ограничений YouTube, вы можете открыть трейлер напрямую:
         <a :href="youtubeWatchUrl" target="_blank" rel="noopener noreferrer">смотреть на YouTube</a>.
       </p>
     </div>
@@ -103,6 +107,7 @@ import { useI18n } from 'vue-i18n';
 import { getTitle, getSimilar, getTitleByTmdb, getTrailer } from '../../api/titles';
 import { createUserTitle, getUserTitleByTitleId, updateUserTitle } from '../../api/userTitles';
 import type { ApiTitle, MediaType, UserTitleStateResponse } from '../../api/types';
+import type { TrailerResponse } from '../../api/titles';
 
 const route = useRoute();
 const router = useRouter();
@@ -116,8 +121,8 @@ const loading = ref(true);
 const similarLoading = ref(true);
 const saving = ref(false);
 const whyReasons = ref<string[]>([]);
-const trailerKey = ref<string | null>(null);
 const trailerLoading = ref(false);
+const trailer = ref<TrailerResponse | null>(null);
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 
@@ -170,11 +175,11 @@ const fetchSimilar = async () => {
 
 const fetchTrailer = async () => {
   trailerLoading.value = true;
-  trailerKey.value = null;
+  trailer.value = null;
   try {
     const id = route.params.id as string;
     const res = await getTrailer(id);
-    trailerKey.value = res?.youtubeKey ?? null;
+    trailer.value = res;
   } finally {
     trailerLoading.value = false;
   }
@@ -266,12 +271,25 @@ const posterStyle = computed(() =>
 );
 
 const trailerUrl = computed(() =>
-  trailerKey.value ? `https://www.youtube.com/embed/${trailerKey.value}?autoplay=0&hl=ru` : '',
+  trailer.value?.youtubeKey ? `https://www.youtube.com/embed/${trailer.value.youtubeKey}?autoplay=0&hl=ru` : '',
 );
 
 const youtubeWatchUrl = computed(() =>
-  trailerKey.value ? `https://www.youtube.com/watch?v=${trailerKey.value}` : '#',
+  trailer.value?.youtubeKey ? `https://www.youtube.com/watch?v=${trailer.value.youtubeKey}` : '#',
 );
+
+const trailerIsRussian = computed(() => {
+  const lang = trailer.value?.language?.toLowerCase();
+  return lang ? ['ru', 'uk', 'be'].includes(lang) : false;
+});
+
+const trailerLanguageLabel = computed(() => {
+  const lang = trailer.value?.language?.toLowerCase();
+  if (!lang) return 'Язык не указан';
+  if (['ru', 'uk', 'be'].includes(lang)) return 'Русская дорожка';
+  if (lang === 'en') return 'Оригинал (EN)';
+  return `Язык: ${lang.toUpperCase()}`;
+});
 
 const year = computed(() => (title.value?.releaseDate ? new Date(title.value.releaseDate).getFullYear() : '—'));
 const mediaLabel = computed(() => {
@@ -326,6 +344,7 @@ watch(
 .why-title { font-weight: 700; margin-bottom: 6px; }
 .why ul { margin: 0; padding-left: 18px; color: var(--text-secondary); }
 .trailer { margin: 18px 0; }
+.trailer-header { display: flex; align-items: center; gap: 10px; }
 .trailer-frame {
   position: relative;
   width: 100%;

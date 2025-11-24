@@ -3,6 +3,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { MediaType, Prisma, Title, UserTitleState } from '@prisma/client';
 import { TitlesService } from '../titles/titles.service';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { pickVariantForUser, profileConfig, weightVariants } from './recommendation.config';
 
 export interface RecommendationSignals {
@@ -57,6 +58,13 @@ export interface RecommendationContext {
   dayOfWeek?: 'weekday' | 'weekend';
   diversityLevel?: 'soft' | 'balanced' | 'bold';
   overrides?: RecommendationOverrides;
+   // taste mixer live controls
+  mixer?: {
+    risk: number; // 0–1
+    novelty: number; // 0–1
+    typeTilt: number; // 0–1 (0=movie, 1=tv/anime)
+  };
+  fatigueSoften?: boolean;
 }
 
 export interface RecommendationResultItem {
@@ -135,6 +143,7 @@ export class RecommendationEngine {
     private readonly prisma: PrismaService,
     private readonly titlesService: TitlesService,
     private readonly tmdb: TmdbService,
+    private readonly embeddings: EmbeddingsService,
   ) {}
 
   async recommend(
@@ -146,6 +155,21 @@ export class RecommendationEngine {
     const variant = pickVariantForUser(userId);
     const baseWeights = weightVariants[variant];
     const weights = { ...baseWeights };
+
+    const sessionTuning = await this.sessionAdaptiveWeights(userId);
+    Object.keys(sessionTuning).forEach((key) => {
+      const k = key as keyof typeof weights;
+      if (weights[k]) weights[k] *= sessionTuning[k] ?? 1;
+    });
+
+    const fatigue = await this.detectFatigue(userId);
+    if (fatigue) {
+      context.fatigueSoften = true;
+      weights.novelty *= 0.65;
+      weights.diversity *= 0.8;
+      context.diversityLevel = context.diversityLevel ?? 'soft';
+      context.timeAvailable = context.timeAvailable ?? '90';
+    }
 
     if (context.overrides?.genre) {
       weights.genre *= context.overrides.genre;
@@ -175,7 +199,7 @@ export class RecommendationEngine {
       .map((title) => this.scoreCandidate(title, effectiveProfile, context, weights))
       .sort((a, b) => b.score - a.score);
 
-    const diversified = this.diversify(scored, limit, context);
+    const diversified = this.applyBandit(this.diversify(scored, limit, context), scored, limit, context);
     const elapsedMs = Date.now() - startedAt;
 
     if (diversified.length > 0) {
@@ -210,6 +234,42 @@ export class RecommendationEngine {
       signals: item.signals,
       explanation: this.buildExplanation(item, effectiveProfile, context),
     }));
+  }
+
+  private async sessionAdaptiveWeights(userId: string): Promise<Partial<typeof weightVariants['A']>> {
+    // Берём последние положительные фидбэки за сутки и усиливаем жанр/новизну/свежесть в рамках текущей сессии.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const feedback = await this.prisma.feedbackEvent.findMany({
+      where: { userId, value: { gt: 0 }, createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+      include: { title: true },
+    });
+
+    if (!feedback.length) return {};
+
+    const genreHits: Record<string, number> = {};
+    let freshnessBias = 0;
+    feedback.forEach((fb, idx) => {
+      const weight = 1 - idx * 0.08; // меньше вес для старых событий
+      (fb.title.genres ?? []).forEach((g) => {
+        genreHits[g] = (genreHits[g] ?? 0) + weight;
+      });
+      if (fb.title.releaseDate) {
+        const ageYears = Math.max(1, (Date.now() - fb.title.releaseDate.getTime()) / (365 * 24 * 3600 * 1000));
+        freshnessBias += ageYears < 5 ? weight * 0.4 : -weight * 0.15;
+      }
+    });
+
+    const topGenreBoost = Math.min(1.35, 1 + Math.max(...Object.values(genreHits)) / 6);
+    const noveltyBoost = 1 + Math.min(0.2, feedback.length * 0.01);
+    const freshnessBoost = 1 + Math.max(-0.15, Math.min(0.25, freshnessBias * 0.08));
+
+    return {
+      genre: topGenreBoost,
+      novelty: noveltyBoost,
+      freshness: freshnessBoost,
+    };
   }
 
   private async loadGroupTasteProfile(
@@ -557,6 +617,27 @@ export class RecommendationEngine {
     return `${userId}:${profileUpdatedAt}:${context.mood ?? 'm'}:${context.mindset ?? 'ms'}:${context.company ?? 'c'}:${context.timeAvailable ?? 't'}:${context.noveltyBias ?? 'mix'}:${context.freshness ?? 'any'}`;
   }
 
+  private async buildUserEmbeddingVector(profile: UserTasteProfile): Promise<number[] | null> {
+    const anchors = (profile.anchorTitles ?? []).slice(0, 6);
+    if (!anchors.length) return null;
+
+    const vectors: number[][] = [];
+    for (const anchor of anchors) {
+      const v = await this.embeddings.getEmbedding(anchor.id);
+      if (v?.length) vectors.push(v);
+    }
+    if (!vectors.length) return null;
+
+    const dim = vectors[0].length;
+    const sum = new Array(dim).fill(0);
+    vectors.forEach((vec) => {
+      for (let i = 0; i < dim; i += 1) {
+        sum[i] += vec[i] ?? 0;
+      }
+    });
+    return sum.map((v) => Number((v / vectors.length).toFixed(6)));
+  }
+
   private async buildCandidatePool(
     userId: string,
     profile: UserTasteProfile,
@@ -581,13 +662,33 @@ export class RecommendationEngine {
 
     const seeds: { tmdbId: number; mediaType: MediaType }[] = [];
 
+    const embeddingVector = await this.buildUserEmbeddingVector(profile);
+    let vectorCandidates: Candidate[] = [];
+    if (embeddingVector) {
+      vectorCandidates = await this.embeddings.searchSimilar(
+        embeddingVector,
+        Math.max(12, targetSize / 2),
+        excludeTitleIds,
+      );
+    }
+
     // похожие к любимым тайтлам
     const similarSeeds = await Promise.all(
       (profile.anchorTitles ?? []).slice(0, 4).map(async (anchor) => {
-        const similar = await this.tmdb.similar(anchor.tmdbId, this.mapMediaType(anchor.mediaType));
-        return (similar?.results ?? [])
-          .slice(0, 12)
-          .map((r: any) => ({ tmdbId: r.id, mediaType: anchor.mediaType }));
+        try {
+          const similar = await this.tmdb.similar(
+            anchor.tmdbId,
+            this.mapMediaType(anchor.mediaType),
+          );
+          return (similar?.results ?? [])
+            .slice(0, 12)
+            .map((r: any) => ({ tmdbId: r.id, mediaType: anchor.mediaType }));
+        } catch (error) {
+          this.logger.warn(
+            `tmdb.similar failed for anchor ${anchor.tmdbId}: ${(error as Error).message}`,
+          );
+          return [];
+        }
       }),
     );
     similarSeeds.flat().forEach((s) => seeds.push(s));
@@ -618,12 +719,18 @@ export class RecommendationEngine {
           seeds.push({ tmdbId: row.tmdbId, mediaType: row.mediaType });
         });
       } else {
-        const res = await this.tmdb.trending(this.mapMediaType(mediaType));
-        (res?.results ?? []).slice(0, 15).forEach((r: any) => {
-          const resolvedType =
-            this.normalizeMediaType(r.media_type) ?? (mediaType as MediaType);
-          seeds.push({ tmdbId: r.id, mediaType: resolvedType });
-        });
+        try {
+          const res = await this.tmdb.trending(this.mapMediaType(mediaType));
+          (res?.results ?? []).slice(0, 15).forEach((r: any) => {
+            const resolvedType =
+              this.normalizeMediaType(r.media_type) ?? (mediaType as MediaType);
+            seeds.push({ tmdbId: r.id, mediaType: resolvedType });
+          });
+        } catch (error) {
+          this.logger.warn(
+            `tmdb.trending failed for mediaType=${mediaType}: ${(error as Error).message}`,
+          );
+        }
       }
     }
 
@@ -651,12 +758,18 @@ export class RecommendationEngine {
             seeds.push({ tmdbId: row.tmdbId, mediaType: row.mediaType });
           });
         } else {
-          const res = await this.tmdb.popular(this.mapMediaType(mediaType));
-          (res?.results ?? []).slice(0, 12).forEach((r: any) => {
-            const resolvedType =
-              this.normalizeMediaType(r.media_type) ?? (mediaType as MediaType);
-            seeds.push({ tmdbId: r.id, mediaType: resolvedType });
-          });
+          try {
+            const res = await this.tmdb.popular(this.mapMediaType(mediaType));
+            (res?.results ?? []).slice(0, 12).forEach((r: any) => {
+              const resolvedType =
+                this.normalizeMediaType(r.media_type) ?? (mediaType as MediaType);
+              seeds.push({ tmdbId: r.id, mediaType: resolvedType });
+            });
+          } catch (error) {
+            this.logger.warn(
+              `tmdb.popular failed for mediaType=${mediaType}: ${(error as Error).message}`,
+            );
+          }
         }
       }
     }
@@ -668,7 +781,7 @@ export class RecommendationEngine {
     });
 
     const resolvedSeeds = await this.resolveSeeds(seeds, excludeTitleIds, targetSize * 2);
-    const candidates = [...resolvedSeeds, ...local].filter(
+    const candidates = [...vectorCandidates, ...resolvedSeeds, ...local].filter(
       (c, idx, arr) => arr.findIndex((t) => t.id === c.id) === idx,
     );
 
@@ -897,11 +1010,16 @@ export class RecommendationEngine {
     signals.context_company_family = context.company === 'family' ? 1 : 0;
 
     // тип и новизна
-    const typePref = profile.preferredTypes.has(title.mediaType) ? 1 : 0.65;
+    const mixerTilt = context.mixer ? context.mixer.typeTilt : 0.5;
+    const tiltBoost = title.mediaType === 'movie' ? (0.5 - mixerTilt) : mixerTilt - 0.5;
+    const typePrefBase = profile.preferredTypes.has(title.mediaType) ? 1 : 0.65;
+    const typePref = Math.max(0.4, Math.min(1.15, typePrefBase + tiltBoost * 0.3));
     signals.typePreference = typePref;
     score += typePref * weights.typePreference;
 
-    let novelty = profile.seenTitleIds.has(title.id) ? -0.9 : 0.25;
+    const popularityRaw = (raw?.popularity ?? 0) as number;
+    const obscurity = Math.max(0, 1 - Math.min(1, popularityRaw / 500));
+    let novelty = profile.seenTitleIds.has(title.id) ? -0.9 : 0.25 + obscurity * 0.6;
     if (context.noveltyBias === 'surprise') novelty += 0.35;
     if (context.noveltyBias === 'safe') novelty -= 0.15;
     signals.novelty = novelty;
@@ -1024,6 +1142,46 @@ export class RecommendationEngine {
     return base.slice(0, limit);
   }
 
+  private applyBandit(
+    baseline: { title: Title; score: number; signals: RecommendationSignals; reasons: string[] }[],
+    scored: { title: Title; score: number; signals: RecommendationSignals; reasons: string[] }[],
+    limit: number,
+    context: RecommendationContext,
+  ) {
+    const epsilon = context.noveltyBias === 'surprise' || context.diversityLevel === 'bold' ? 0.35 : 0.15;
+    if (epsilon <= 0) return baseline;
+
+    const chosen = [...baseline];
+    const used = new Set(chosen.map((c) => c.title.id));
+    const spicyPool = scored.filter((s) => !used.has(s.title.id)).sort((a, b) => {
+      const nA = (a.signals.novelty ?? 0) as number;
+      const nB = (b.signals.novelty ?? 0) as number;
+      return nB - nA;
+    });
+
+    for (let i = 2; i < Math.min(limit, chosen.length); i += 1) {
+      if (Math.random() > epsilon) continue;
+      const pick = spicyPool.shift();
+      if (pick) {
+        chosen[i] = pick;
+      }
+    }
+    return chosen.slice(0, limit);
+  }
+
+  private async detectFatigue(userId: string): Promise<boolean> {
+    const recent = await this.prisma.feedbackEvent.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { value: true, createdAt: true },
+    });
+
+    const now = Date.now();
+    const negatives = recent.filter((e) => e.value < 0 && now - e.createdAt.getTime() < 10 * 60 * 1000);
+    return negatives.length >= 3;
+  }
+
   private buildExplanation(
     item: { title: Title; score: number; signals: RecommendationSignals; reasons: string[] },
     profile: UserTasteProfile,
@@ -1071,6 +1229,10 @@ export class RecommendationEngine {
       (item.signals.novelty as number) > 0.35
     ) {
       reasons.add('Экспериментальный выбор под ваш запрос сюрпризов');
+    }
+
+    if (context.fatigueSoften) {
+      reasons.add('Мы упростили и укоротили выдачу после серии дизлайков');
     }
 
     if (!reasons.size && item.title.tmdbRating) {

@@ -51,6 +51,41 @@
             />
           </div>
         </div>
+
+        <div class="mixer surface-card">
+          <div class="mixer-header">
+            <div>
+              <p class="eyebrow">Taste Mixer</p>
+              <h3 class="section-title">Соберите подачу под настроение</h3>
+            </div>
+            <div class="mixer-tags">
+              <Tag :value="mixerRiskLabel" />
+              <Tag :value="mixerNoveltyLabel" />
+              <Tag :value="mixerTypeLabel" />
+            </div>
+          </div>
+          <div class="mixer-grid">
+            <div>
+              <label>Риск / качество</label>
+              <Slider v-model="mixerRisk" :min="0" :max="100" :step="1" />
+              <small>{{ mixerRiskLabel }}</small>
+            </div>
+            <div>
+              <label>Узнаваемое ↔ Новое</label>
+              <Slider v-model="mixerNovelty" :min="0" :max="100" :step="1" />
+              <small>{{ mixerNoveltyLabel }}</small>
+            </div>
+            <div>
+              <label>Кино ↔ Сериалы/аниме</label>
+              <Slider v-model="mixerTypeTilt" :min="0" :max="100" :step="1" />
+              <small>{{ mixerTypeLabel }}</small>
+            </div>
+            <div class="mixer-actions">
+              <Button label="Перемешать выдачу" icon="pi pi-sparkles" size="small" @click="load" />
+              <small class="hint">Taste Mixer меняет веса движка без сброса сессии.</small>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="top-actions">
         <Button
@@ -105,20 +140,40 @@
             :explanation="currentFocus.explanation"
             :status-label="currentFocus.statusLabel"
             :can-add-to-watchlist="currentFocus.canAddToWatchlist"
+            :origin="currentFocus.origin"
             :busy="actionLoading === currentFocus.id"
             :show-what-if="true"
             @like="like(currentFocus)"
-            @watched="watched(currentFocus)"
-            @dislike="dislike(currentFocus)"
-            @details="openDetails(currentFocus)"
-            @add-to-watchlist="addToWatchlist(currentFocus)"
-            @tweak="tweak(currentFocus, $event)"
-          />
-          <div class="focus-actions">
-            <Button
-              size="small"
-              text
-              label="Следующая рекомендация"
+          @watched="watched(currentFocus)"
+          @dislike="dislike(currentFocus)"
+          @details="openDetails(currentFocus)"
+          @add-to-watchlist="addToWatchlist(currentFocus)"
+          @tweak="tweak(currentFocus, $event)"
+          @why-not="loadWhyNot(currentFocus)"
+        />
+        <div v-if="whyNot[currentFocus.id]?.length" class="why-not">
+          <div class="why-not-title">Почти попали:</div>
+          <div class="why-not-list">
+            <div v-for="alt in whyNot[currentFocus.id]" :key="alt.id" class="why-not-card">
+              <div class="why-not-head">
+                <span class="why-not-name">{{ alt.displayTitle }}</span>
+                <small class="why-not-meta">{{ alt.meta }}</small>
+              </div>
+              <ul class="why-not-reasons">
+                <li v-for="reason in alt.explanation.slice(0, 2)" :key="reason">{{ reason }}</li>
+              </ul>
+              <div class="why-not-actions">
+                <Button size="small" text label="Детали" @click="openDetails(alt)" />
+                <Button size="small" text icon="pi pi-arrow-right" label="Заменить" @click="replaceCard(currentFocus, alt)" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="focus-actions">
+          <Button
+            size="small"
+            text
+            label="Следующая рекомендация"
               icon="pi pi-arrow-right"
               icon-pos="right"
               @click="nextFocus"
@@ -141,6 +196,7 @@
           :explanation="item.explanation"
           :status-label="item.statusLabel"
           :can-add-to-watchlist="item.canAddToWatchlist"
+          :origin="item.origin"
           :busy="actionLoading === item.id"
           :show-what-if="true"
           @like="like(item)"
@@ -149,7 +205,26 @@
           @details="openDetails(item)"
           @add-to-watchlist="addToWatchlist(item)"
           @tweak="tweak(item, $event)"
+          @why-not="loadWhyNot(item)"
         />
+        <div v-if="whyNot[item.id]?.length" class="why-not">
+          <div class="why-not-title">Почти попали:</div>
+          <div class="why-not-list">
+            <div v-for="alt in whyNot[item.id]" :key="alt.id" class="why-not-card">
+              <div class="why-not-head">
+                <span class="why-not-name">{{ alt.displayTitle }}</span>
+                <small class="why-not-meta">{{ alt.meta }}</small>
+              </div>
+              <ul class="why-not-reasons">
+                <li v-for="reason in alt.explanation.slice(0, 2)" :key="reason">{{ reason }}</li>
+              </ul>
+              <div class="why-not-actions">
+                <Button size="small" text label="Детали" @click="openDetails(alt)" />
+                <Button size="small" text icon="pi pi-arrow-right" label="Заменить" @click="replaceCard(item, alt)" />
+              </div>
+            </div>
+          </div>
+        </div>
       </TransitionGroup>
     </div>
 
@@ -182,6 +257,7 @@
           :explanation="item.explanation"
           :status-label="item.statusLabel"
           :can-add-to-watchlist="item.canAddToWatchlist"
+          :origin="item.origin"
           :busy="false"
           @like="like(item)"
           @watched="watched(item)"
@@ -209,6 +285,7 @@ import {
   fetchEveningProgram,
   sendRecommendationFeedback,
   sendRecommendationTweak,
+  fetchWhyNot,
 } from '../../api/recommendations';
 import type {
   ApiTitle,
@@ -236,6 +313,7 @@ interface RecCard {
   explanation: string[];
   statusLabel?: string;
   canAddToWatchlist: boolean;
+  origin?: string;
 }
 
 interface EveningRecCard extends RecCard {
@@ -262,11 +340,16 @@ const noveltyBias = ref<'safe' | 'mix' | 'surprise'>('mix');
 const pace = ref<'calm' | 'balanced' | 'dynamic'>('balanced');
 const freshness = ref<'trending' | 'classic' | 'any'>('trending');
 const diversityLevel = ref<'soft' | 'balanced' | 'bold'>('balanced');
+const mixerRisk = ref(50);
+const mixerNovelty = ref(50);
+const mixerTypeTilt = ref(50);
 const contextPresets = ref<ContextPresetResponse[]>([]);
 const eveningProgram = ref<EveningRecCard[]>([]);
 const eveningLoading = ref(false);
 const focusMode = ref(false);
 const focusIndex = ref(0);
+const whyNot = ref<Record<string, RecCard[]>>({});
+const whyNotLoading = ref<Record<string, boolean>>({});
 
 const companies = [
   { label: 'Один', value: 'solo' },
@@ -306,6 +389,9 @@ const mindsetLabel = computed(() =>
 );
 const moodParam = computed(() => (mood.value < 40 ? 'light' : mood.value > 70 ? 'heavy' : 'neutral'));
 const mindsetParam = computed(() => (mindset.value < 40 ? 'relax' : mindset.value > 70 ? 'focus' : 'balanced'));
+const mixerRiskLabel = computed(() => (mixerRisk.value < 40 ? 'Безопасно' : mixerRisk.value > 70 ? 'Остро' : 'Сбалансировано'));
+const mixerNoveltyLabel = computed(() => (mixerNovelty.value < 40 ? 'Знакомое' : mixerNovelty.value > 70 ? 'Сюрпризы' : 'Смешать'));
+const mixerTypeLabel = computed(() => (mixerTypeTilt.value < 40 ? 'Больше кино' : mixerTypeTilt.value > 60 ? 'Больше сериалов/аниме' : 'Баланс'));
 const contextTags = computed(() => [
   moodParam.value === 'light' ? 'Лёгкое' : moodParam.value === 'heavy' ? 'Тяжёлое' : 'Нейтральное',
   mindsetParam.value === 'relax' ? 'Расслабиться' : mindsetParam.value === 'focus' ? 'Подумать' : 'Баланс',
@@ -314,6 +400,9 @@ const contextTags = computed(() => [
   noveltyOptions.find((n) => n.value === noveltyBias.value)?.label ?? '',
   paceOptions.find((p) => p.value === pace.value)?.label ?? '',
   freshnessOptions.find((f) => f.value === freshness.value)?.label ?? '',
+  mixerRiskLabel.value,
+  mixerNoveltyLabel.value,
+  mixerTypeLabel.value,
 ].filter(Boolean));
 
 const applyPreset = (preset: ContextPresetResponse) => {
@@ -377,6 +466,7 @@ const mapToCard = (item: RecommendationItemResponse): RecCard => {
     explanation: item.explanation,
     statusLabel,
     canAddToWatchlist,
+    origin: item.origin,
   };
 };
 
@@ -417,6 +507,9 @@ const load = async () => {
       pace: pace.value,
       freshness: freshness.value,
       diversityLevel: diversityLevel.value,
+      mixerRisk: mixerRisk.value,
+      mixerNovelty: mixerNovelty.value,
+      mixerTypeTilt: mixerTypeTilt.value,
     });
     sessionId.value = data.sessionId;
     recommendations.value = data.items.map(mapToCard);
@@ -527,6 +620,26 @@ const dislike = async (item: RecCard) => {
   }
 };
 
+const loadWhyNot = async (item: RecCard) => {
+  if (!sessionId.value) return;
+  whyNotLoading.value[item.id] = true;
+  try {
+    const res = await fetchWhyNot({ sessionId: sessionId.value, titleId: item.id });
+    whyNot.value[item.id] = (res.items ?? []).map(mapToCard);
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Не удалось показать альтернативы', life: 3000 });
+  } finally {
+    whyNotLoading.value[item.id] = false;
+  }
+};
+
+const replaceCard = (original: RecCard, replacement: RecCard) => {
+  const index = recommendations.value.findIndex((r) => r.id === original.id);
+  if (index >= 0) {
+    recommendations.value.splice(index, 1, replacement);
+  }
+};
+
 const tweak = async (item: RecCard, payload: TweakPayload) => {
   if (!sessionId.value) return;
   if (!payload.runtime && !payload.tone) return;
@@ -576,6 +689,9 @@ const loadEveningProgram = async () => {
       pace: pace.value,
       freshness: freshness.value,
       diversityLevel: diversityLevel.value,
+      mixerRisk: mixerRisk.value,
+      mixerNovelty: mixerNovelty.value,
+      mixerTypeTilt: mixerTypeTilt.value,
     });
     eveningProgram.value = data.items.map(mapEveningItemToCard);
   } catch (error: any) {
@@ -687,6 +803,46 @@ const nextFocus = () => {
   gap: 12px;
 }
 
+.mixer {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(138, 180, 255, 0.08), rgba(255, 73, 167, 0.06));
+  border: 1px solid rgba(138, 180, 255, 0.16);
+}
+
+.mixer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mixer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 18px;
+  margin-top: 10px;
+}
+
+.mixer-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mixer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mixer .hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .list {
   margin-top: 16px;
   display: grid;
@@ -771,6 +927,61 @@ small {
 .focus-card {
   max-width: 780px;
   margin: 0 auto;
+}
+
+.why-not {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 8px;
+}
+
+.why-not-title {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.why-not-list {
+  display: grid;
+  gap: 8px;
+}
+
+.why-not-card {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.why-not-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.why-not-name {
+  font-weight: 600;
+}
+
+.why-not-meta {
+  color: var(--text-secondary);
+}
+
+.why-not-reasons {
+  margin: 6px 0 4px;
+  padding-left: 16px;
+  color: var(--text-secondary);
+}
+
+.why-not-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .focus-actions {

@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { MediaType } from '@prisma/client';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
 
 @Injectable()
 export class TitlesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tmdb: TmdbService,
+    private readonly embeddings: EmbeddingsService,
   ) {}
 
   /**
@@ -34,12 +36,15 @@ export class TitlesService {
 
   async getOrCreateFromTmdb(tmdbId: number, mediaType: MediaType) {
     const existing = await this.prisma.title.findUnique({ where: { tmdbId } });
-    if (existing) return existing;
+    if (existing) {
+      void this.embeddings.ensureTitleEmbedding(existing).catch(() => undefined);
+      return existing;
+    }
 
     const details = await this.tmdb.details(tmdbId, this.mapMediaType(mediaType));
     if (!details) throw new NotFoundException('TMDB title not found');
 
-    return this.prisma.title.create({
+    const created = await this.prisma.title.create({
       data: {
         tmdbId,
         mediaType,
@@ -62,6 +67,9 @@ export class TitlesService {
         rawTmdbJson: details,
       },
     });
+
+    void this.embeddings.ensureTitleEmbedding(created).catch(() => undefined);
+    return created;
   }
 
   async findOne(id: string) {
@@ -79,23 +87,32 @@ export class TitlesService {
   async getTrailerForTitle(id: string) {
     const title = await this.findOne(id);
     const mediaType = this.mapMediaType(title.mediaType);
-    const videos = await this.tmdb.videos(title.tmdbId, mediaType);
+    const preferredLanguages = ['ru', 'uk', 'be', 'en'];
+    const videos = await this.tmdb.videos(title.tmdbId, mediaType, preferredLanguages);
 
     const results: any[] = videos?.results ?? [];
     if (!results.length) {
       return null;
     }
 
-    const isTrailer = (v: any) => v.type === 'Trailer';
+    const isTrailer = (v: any) => v.type === 'Trailer' || v.type === 'Teaser';
     const isYoutube = (v: any) => v.site === 'YouTube';
-    const isRussian = (v: any) => v.iso_639_1 === 'ru' || v.name?.toLowerCase().includes('рус');
+    const isPreferredLang = (v: any) => preferredLanguages.includes((v.iso_639_1 ?? '').toLowerCase());
+    const hintsRussian = (v: any) => /рус/iu.test(v.name ?? '') || (v.iso_639_1 ?? '').toLowerCase() === 'ru';
 
-    const pick = (predicate: (v: any) => boolean) =>
-      results.find((v) => isTrailer(v) && isYoutube(v) && predicate(v));
+    const score = (v: any) => {
+      let s = 0;
+      if (isTrailer(v)) s += 10;
+      if (v.official) s += 2;
+      if (isPreferredLang(v)) s += 6;
+      if (hintsRussian(v)) s += 5;
+      if (v.type === 'Teaser') s -= 2;
+      return s;
+    };
 
-    const ruTrailer = pick(isRussian);
-    const anyTrailer = pick(() => true);
-    const candidate = ruTrailer ?? anyTrailer;
+    const candidate = results
+      .filter((v) => isYoutube(v) && (isTrailer(v) || v.type === 'Clip'))
+      .sort((a, b) => score(b) - score(a))[0];
 
     if (!candidate) {
       return null;
@@ -104,6 +121,7 @@ export class TitlesService {
     return {
       youtubeKey: candidate.key,
       name: candidate.name as string,
+      language: (candidate.iso_639_1 as string | undefined) ?? null,
     };
   }
 

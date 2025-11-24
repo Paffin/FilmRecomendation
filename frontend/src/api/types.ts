@@ -30,6 +30,7 @@ export interface RecommendationUserState {
 export interface RecommendationItemResponse {
   title: ApiTitle;
   explanation: string[];
+  origin?: string;
   userState?: RecommendationUserState | null;
 }
 

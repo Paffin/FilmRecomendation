@@ -21,6 +21,9 @@ export class TmdbService {
       baseURL: 'https://api.themoviedb.org/3',
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       timeout: 6500,
+      // В контейнере игнорируем HTTP(S)_PROXY с localhost, чтобы не пытаться ходить
+      // на несуществующий прокси 127.0.0.1:443.
+      proxy: false,
     });
   }
 
@@ -74,11 +77,20 @@ export class TmdbService {
     );
   }
 
-  async videos(tmdbId: number, mediaType: string) {
+  async videos(
+    tmdbId: number,
+    mediaType: string,
+    preferredLanguages: string[] = ['ru', 'uk', 'be', 'en'],
+  ) {
+    const includeVideoLanguage = [...preferredLanguages, 'null'].join(',');
+
     return this.cachedGet(
-      `videos:${mediaType}:${tmdbId}`,
+      `videos:${mediaType}:${tmdbId}:${includeVideoLanguage}`,
       `/${mediaType}/${tmdbId}/videos`,
-      { language: this.language, include_video_language: this.language },
+      {
+        language: this.language,
+        include_video_language: includeVideoLanguage,
+      },
       60 * 60 * 1000,
     );
   }

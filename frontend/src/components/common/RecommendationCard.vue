@@ -11,6 +11,7 @@
           <div v-if="meta" class="meta">{{ meta }}</div>
           <div v-if="secondaryMeta" class="meta subtle">{{ secondaryMeta }}</div>
           <span v-if="statusLabel" class="status-label">{{ statusLabel }}</span>
+          <Tag v-if="originLabel" :value="originLabel" severity="secondary" class="origin-tag" />
         </div>
       </div>
       <div v-if="tags?.length" class="chips">
@@ -63,6 +64,14 @@
         <Button icon="pi pi-eye" :label="t('recommendations.more')" text @click="$emit('details')" />
         <span class="spacer" />
         <Button
+          size="small"
+          text
+          icon="pi pi-question-circle"
+          :label="'Почему не это?'"
+          :disabled="busy"
+          @click="$emit('why-not')"
+        />
+        <Button
           v-if="canAddToWatchlist"
           icon="pi pi-bookmark"
           :label="t('recommendations.toWatchlist')"
@@ -108,6 +117,7 @@ interface Props {
   statusLabel?: string;
   canAddToWatchlist?: boolean;
   showWhatIf?: boolean;
+  origin?: string;
 }
 
 const props = defineProps<Props>();
@@ -118,6 +128,7 @@ const emit = defineEmits<{
   (e: 'like'): void;
   (e: 'dislike'): void;
   (e: 'tweak', payload: { runtime: 'shorter' | 'longer' | null; tone: 'lighter' | 'heavier' | null }): void;
+  (e: 'why-not'): void;
 }>();
 const { t } = useI18n();
 
@@ -126,6 +137,14 @@ const posterStyle = computed(() =>
     ? { backgroundImage: `url(${props.poster})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : undefined,
 );
+
+const originLabel = computed(() => {
+  if (!props.origin) return '';
+  if (props.origin === 'evening_program') return 'Режим вечера';
+  if (props.origin === 'recommendation') return 'Рекомендации';
+  if (props.origin === 'watchlist') return 'Из списка';
+  return props.origin;
+});
 
 const runtimeTweak = ref<'shorter' | 'longer' | null>(null);
 const toneTweak = ref<'lighter' | 'heavier' | null>(null);
@@ -199,6 +218,12 @@ const toggleTone = (value: 'lighter' | 'heavier') => {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
+}
+
+.origin-tag :deep(.p-tag) {
+  background: rgba(255, 255, 255, 0.04);
+  color: #cfd3e4;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .title {
