@@ -267,6 +267,10 @@ const onNodeClick = (node: LayoutNode) => {
     transform 0.2s ease-out;
 }
 
+.node.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
 .node.user {
   background: linear-gradient(135deg, #8ab4ff, #ff49a7);
   color: #050816;
@@ -285,6 +289,18 @@ const onNodeClick = (node: LayoutNode) => {
 .node:hover {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
   background: rgba(39, 51, 120, 0.95);
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(138, 180, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(138, 180, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(138, 180, 255, 0);
+  }
 }
 
 .node-label {

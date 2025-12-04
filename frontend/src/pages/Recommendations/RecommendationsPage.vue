@@ -184,43 +184,42 @@
       </div>
       <TransitionGroup v-else name="rec-fade" tag="div" class="list">
         <div v-if="recommendations.length === 0" class="empty">{{ t('recommendations.empty') }}</div>
-        <RecommendationCard
-          v-for="item in recommendations"
-          v-else
-          :key="item.id"
-          :title="item.displayTitle"
-          :meta="item.meta"
-          :secondary-meta="item.secondaryMeta"
-          :tags="item.tags"
-          :poster="item.poster"
-          :explanation="item.explanation"
-          :status-label="item.statusLabel"
-          :can-add-to-watchlist="item.canAddToWatchlist"
-          :origin="item.origin"
-          :busy="actionLoading === item.id"
-          :show-what-if="true"
-          @like="like(item)"
-          @watched="watched(item)"
-          @dislike="dislike(item)"
-          @details="openDetails(item)"
-          @add-to-watchlist="addToWatchlist(item)"
-          @tweak="tweak(item, $event)"
-          @why-not="loadWhyNot(item)"
-        />
-        <div v-if="whyNot[item.id]?.length" class="why-not">
-          <div class="why-not-title">Почти попали:</div>
-          <div class="why-not-list">
-            <div v-for="alt in whyNot[item.id]" :key="alt.id" class="why-not-card">
-              <div class="why-not-head">
-                <span class="why-not-name">{{ alt.displayTitle }}</span>
-                <small class="why-not-meta">{{ alt.meta }}</small>
-              </div>
-              <ul class="why-not-reasons">
-                <li v-for="reason in alt.explanation.slice(0, 2)" :key="reason">{{ reason }}</li>
-              </ul>
-              <div class="why-not-actions">
-                <Button size="small" text label="Детали" @click="openDetails(alt)" />
-                <Button size="small" text icon="pi pi-arrow-right" label="Заменить" @click="replaceCard(item, alt)" />
+        <div v-for="item in recommendations" :key="item.id" class="rec-with-why">
+          <RecommendationCard
+            :title="item.displayTitle"
+            :meta="item.meta"
+            :secondary-meta="item.secondaryMeta"
+            :tags="item.tags"
+            :poster="item.poster"
+            :explanation="item.explanation"
+            :status-label="item.statusLabel"
+            :can-add-to-watchlist="item.canAddToWatchlist"
+            :origin="item.origin"
+            :busy="actionLoading === item.id"
+            :show-what-if="true"
+            @like="like(item)"
+            @watched="watched(item)"
+            @dislike="dislike(item)"
+            @details="openDetails(item)"
+            @add-to-watchlist="addToWatchlist(item)"
+            @tweak="tweak(item, $event)"
+            @why-not="loadWhyNot(item)"
+          />
+          <div v-if="whyNot[item.id]?.length" class="why-not">
+            <div class="why-not-title">Почти попали:</div>
+            <div class="why-not-list">
+              <div v-for="alt in whyNot[item.id]" :key="alt.id" class="why-not-card">
+                <div class="why-not-head">
+                  <span class="why-not-name">{{ alt.displayTitle }}</span>
+                  <small class="why-not-meta">{{ alt.meta }}</small>
+                </div>
+                <ul class="why-not-reasons">
+                  <li v-for="reason in alt.explanation.slice(0, 2)" :key="reason">{{ reason }}</li>
+                </ul>
+                <div class="why-not-actions">
+                  <Button size="small" text label="Детали" @click="openDetails(alt)" />
+                  <Button size="small" text icon="pi pi-arrow-right" label="Заменить" @click="replaceCard(item, alt)" />
+                </div>
               </div>
             </div>
           </div>
@@ -847,6 +846,11 @@ const nextFocus = () => {
   margin-top: 16px;
   display: grid;
   gap: 14px;
+}
+
+.rec-with-why {
+  display: grid;
+  gap: 8px;
 }
 
 .context-tags {

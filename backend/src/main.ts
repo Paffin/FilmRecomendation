@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,8 +11,11 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: false });
   const config = app.get(ConfigService);
+
+  // Мы за reverse-proxy (nginx в Docker), поэтому доверяем заголовкам X-Forwarded-For.
+  app.set('trust proxy', 1);
 
   app.use(
     helmet({
